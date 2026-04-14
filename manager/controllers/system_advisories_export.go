@@ -49,7 +49,7 @@ func SystemAdvisoriesExportHandler(c *gin.Context) {
 
 	db := middlewares.DBFromContext(c)
 	var exists int64
-	err := db.Model(&models.SystemPlatform{}).Where("inventory_id = ?::uuid ", inventoryID).
+	err := db.Model(&models.SystemInventory{}).Where("inventory_id = ?::uuid ", inventoryID).
 		Count(&exists).Error
 
 	if err != nil {

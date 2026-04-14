@@ -210,7 +210,7 @@ func UpdateMetaLinks(c *gin.Context, meta *ListMeta, total int, subTotals map[st
 		var hasSystems bool
 		account := c.GetInt(utils.KeyAccount)
 		db := middlewares.DBFromContext(c)
-		db.Raw("SELECT EXISTS (SELECT 1 FROM system_platform where rh_account_id = ?)", account).Scan(&hasSystems)
+		db.Raw("SELECT EXISTS (SELECT 1 FROM system_inventory WHERE rh_account_id = ?)", account).Scan(&hasSystems)
 		meta.HasSystems = &hasSystems
 	}
 	return meta, &links, nil
