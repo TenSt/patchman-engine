@@ -370,11 +370,10 @@ func updateSystemPlatform(tx *gorm.DB, accountID int, host *Host,
 		YumChecksum  string `gorm:"column:yum_checksum"`
 	}
 	var oldChecksums OldChecksums
-	// Lock the row for update & return checksum
+	// Lock the system_inventory row and read prior json_checksum / yum_checksum for incremental updates.
 	tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Model(models.SystemPlatform{}).
-		Where("inventory_id = ?::uuid", inventoryID).
-		Where("rh_account_id = ?", accountID).
+		Model(&models.SystemInventory{}).
+		Where("rh_account_id = ? AND inventory_id = ?::uuid", accountID, inventoryID).
 		Select("json_checksum, yum_checksum").
 		First(&oldChecksums)
 
@@ -426,7 +425,7 @@ func storeOrUpdateSysPlatform(
 		utils.LogWarn("err", err, "couldn't find system for update")
 	}
 
-	// return system_platform record after update
+	// RETURNING from system_inventory upsert (id, unchanged_since, …)
 	txi := tx.Clauses(clause.Returning{
 		Columns: []clause.Column{
 			{Name: "id"}, {Name: "inventory_id"}, {Name: "rh_account_id"},
