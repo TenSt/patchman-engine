@@ -21,11 +21,7 @@ func TestUpdateSystem(t *testing.T) {
 	configure()
 
 	deleteData(t)
-	assert.NoError(t, database.DB.Create(&models.SystemPlatform{
-		InventoryID: id,
-		RhAccountID: 1,
-		DisplayName: id,
-	}).Error)
+	createTestSystemInDB(t, id, 1, id)
 
 	ev := createTestUploadEvent("1", id, "puptoo", false, false, "created")
 	name := "TEST_NAME"
@@ -33,7 +29,7 @@ func TestUpdateSystem(t *testing.T) {
 	ev.Host.SystemProfile.InstalledPackages = &[]string{"kernel-0:4.18.0-193.1.2.el8_2.x86_64"}
 	assert.NoError(t, HandleUpload(ev))
 
-	var system models.SystemPlatform
+	var system models.SystemInventory
 	assert.NoError(t, database.DB.Order("ID DESC").Find(&system, "inventory_id = ?::uuid", id).Error)
 
 	assert.Equal(t, name, system.DisplayName)
@@ -41,11 +37,7 @@ func TestUpdateSystem(t *testing.T) {
 
 func TestDeleteSystem(t *testing.T) {
 	deleteData(t)
-	assert.NoError(t, database.DB.Create(&models.SystemPlatform{
-		InventoryID: id,
-		RhAccountID: 1,
-		DisplayName: id,
-	}).Error)
+	createTestSystemInDB(t, id, 1, id)
 
 	deleteEvent := createTestDeleteEvent(id)
 	err := HandleDelete(deleteEvent)
@@ -144,7 +136,7 @@ func TestCreateDeleteUpload(t *testing.T) {
 	err = HandleUpload(uploadEvent)
 	assert.NoError(t, err)
 
-	var system models.SystemPlatform
+	var system models.SystemInventory
 	assert.NoError(t, database.DB.Order("ID DESC").Find(&system, "inventory_id = ?::uuid", id).Error)
 	assert.Equal(t, originalName, system.DisplayName)
 

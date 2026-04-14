@@ -78,8 +78,8 @@ func TemplateDelete(template mqueue.TemplateResponse) error {
 		return nil
 	}
 
-	// unassign systems from the template
-	err = database.DB.Model(&models.SystemPlatform{}).
+	// unassign systems from the template (template_id lives on system_patch)
+	err = database.DB.Model(&models.SystemPatch{}).
 		Where("rh_account_id = ? AND template_id = ?", accountID, templateID).
 		Update("template_id", nil).Error
 	if err != nil {

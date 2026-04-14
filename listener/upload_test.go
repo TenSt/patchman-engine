@@ -143,18 +143,21 @@ func TestUploadHandlerCreatedSystem(t *testing.T) {
 			reporterID := 1
 			assertSystemInDB(t, id, nil, &reporterID)
 
-			var sys models.SystemPlatform
-			assert.NoError(t, database.DB.Where("inventory_id = ?::uuid", id).Find(&sys).Error)
+			var inv models.SystemInventory
+			assert.NoError(t, database.DB.Where("inventory_id = ?::uuid", id).First(&inv).Error)
+			var patch models.SystemPatch
+			assert.NoError(t, database.DB.Where("rh_account_id = ? AND system_id = ?", inv.RhAccountID, inv.ID).
+				First(&patch).Error)
 			after := time.Now().Add(time.Hour)
-			sys.LastEvaluation = &after
-			assert.NoError(t, database.DB.Save(&sys).Error)
+			patch.LastEvaluation = &after
+			assert.NoError(t, database.DB.Save(&patch).Error)
 			// Test that second upload did not cause re-evaluation
 			logHook := utils.NewTestLogHook()
 			log.AddHook(logHook)
 			err = HandleUpload(event)
 			assert.NoError(t, err)
 			assertInLogs(t, UploadSuccessNoEval, logHook.LogEntries...)
-			assertSystemReposInDB(t, sys.ID, []string{"epel-8"})
+			assertSystemReposInDB(t, inv.ID, []string{"epel-8"})
 			deleteData(t)
 		})
 	}
@@ -360,7 +363,7 @@ func TestStoreOrUpdateSysPlatform(t *testing.T) {
 
 	var oldCount, newCount int
 	var nextval, currval int
-	database.DB.Model(&models.SystemPlatform{}).Select("count(*)").Find(&oldCount)
+	database.DB.Model(&models.SystemInventory{}).Select("count(*)").Find(&oldCount)
 	database.DB.Raw("select nextval('system_inventory_id_seq')").Find(&nextval)
 
 	colsToUpdate := []string{"vmaas_json", "json_checksum", "reporter_id", "satellite_managed"}
@@ -377,9 +380,15 @@ func TestStoreOrUpdateSysPlatform(t *testing.T) {
 	err := storeOrUpdateSysPlatform(database.DB, &inStore, &hostEvent.Host, colsToUpdate)
 	assert.Nil(t, err)
 
-	var outStore models.SystemPlatform
-	database.DB.Model(models.SystemPlatform{}).Find(&outStore, inStore.ID)
-	defer database.DB.Model(models.SystemPlatform{}).Delete(outStore)
+	var outStore models.SystemInventory
+	assert.NoError(t, database.DB.Where("id = ? AND rh_account_id = ?", inStore.ID, inStore.RhAccountID).
+		First(&outStore).Error)
+	defer func() {
+		database.DB.Unscoped().Where("rh_account_id = ? AND system_id = ?", outStore.RhAccountID, outStore.ID).
+			Delete(&models.SystemPatch{})
+		database.DB.Unscoped().Where("id = ? AND rh_account_id = ?", outStore.ID, outStore.RhAccountID).
+			Delete(&models.SystemInventory{})
+	}()
 
 	assert.Equal(t, inStore.InventoryID, outStore.InventoryID)
 	assert.Equal(t, inStore.RhAccountID, outStore.RhAccountID)
@@ -419,19 +428,28 @@ func TestStoreOrUpdateSysPlatform(t *testing.T) {
 
 	updateJSON := "updated_json"
 	reporter := 2
-	inUpdate := outStore
-	inUpdate.VmaasJSON = &updateJSON
-	inUpdate.JSONChecksum = &updateJSON
-	inUpdate.ReporterID = &reporter
-	inUpdate.DisplayName = "should_not_be_updated"
-	inUpdate.SatelliteManaged = true
+	var patchAfterInsert models.SystemPatch
+	assert.NoError(t, database.DB.Where("rh_account_id = ? AND system_id = ?", outStore.RhAccountID, outStore.ID).
+		First(&patchAfterInsert).Error)
+	inUpdate := models.SystemPlatform{
+		ID:               outStore.ID,
+		InventoryID:      outStore.InventoryID,
+		RhAccountID:      outStore.RhAccountID,
+		VmaasJSON:        &updateJSON,
+		JSONChecksum:     &updateJSON,
+		ReporterID:       &reporter,
+		DisplayName:      "should_not_be_updated",
+		SatelliteManaged: true,
+		TemplateID:       patchAfterInsert.TemplateID,
+	}
 
 	// update row
 	err = storeOrUpdateSysPlatform(database.DB, &inUpdate, &hostEvent.Host, colsToUpdate)
 	assert.Nil(t, err)
 
-	var outUpdate models.SystemPlatform
-	database.DB.Model(models.SystemPlatform{}).Find(&outUpdate, inUpdate.ID)
+	var outUpdate models.SystemInventory
+	assert.NoError(t, database.DB.Where("id = ? AND rh_account_id = ?", inUpdate.ID, inUpdate.RhAccountID).
+		First(&outUpdate).Error)
 	assert.Equal(t, inUpdate.InventoryID, outUpdate.InventoryID)
 	assert.Equal(t, inUpdate.RhAccountID, outUpdate.RhAccountID)
 	assert.Equal(t, *inUpdate.VmaasJSON, *outUpdate.VmaasJSON)
@@ -444,7 +462,7 @@ func TestStoreOrUpdateSysPlatform(t *testing.T) {
 	assert.Equal(t, outStore.DisplayName, outUpdate.DisplayName)
 
 	// make sure we are not creating gaps in id sequences
-	database.DB.Model(&models.SystemPlatform{}).Select("count(*)").Find(&newCount)
+	database.DB.Model(&models.SystemInventory{}).Select("count(*)").Find(&newCount)
 	database.DB.Raw("select currval('system_inventory_id_seq')").Find(&currval)
 	countInc := newCount - oldCount
 	maxInc := currval - nextval

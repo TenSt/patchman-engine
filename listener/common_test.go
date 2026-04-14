@@ -35,14 +35,32 @@ func deleteData(t *testing.T) {
 		Delete(&models.SystemRepo{}).Error)
 	assert.Nil(t, database.DB.Unscoped().Where("name NOT IN ('repo1', 'repo2', 'repo3', 'repo4')").
 		Delete(&models.Repo{}).Error)
-	assert.Nil(t, database.DB.Unscoped().Where("inventory_id = ?::uuid", id).Delete(&models.SystemPlatform{}).Error)
+	assert.Nil(t, database.DB.Unscoped().Exec(
+		"DELETE FROM system_patch WHERE (rh_account_id, system_id) IN "+
+			"(SELECT rh_account_id, id FROM system_inventory WHERE inventory_id = ?::uuid)", id).Error)
+	assert.Nil(t, database.DB.Unscoped().Where("inventory_id = ?::uuid", id).Delete(&models.SystemInventory{}).Error)
 	assert.Nil(t, database.DB.Unscoped().Where("name = ?", id).Delete(&models.RhAccount{}).Error)
 	assert.Nil(t, database.DB.Unscoped().Where("inventory_id = ?", id).Delete(&models.DeletedSystem{}).Error)
 }
 
+func createTestSystemInDB(t *testing.T, inventoryID string, rhAccountID int, displayName string) {
+	t.Helper()
+	inv := models.SystemInventory{
+		InventoryID: inventoryID,
+		RhAccountID: rhAccountID,
+		DisplayName: displayName,
+		Tags:        []byte("[]"),
+	}
+	assert.NoError(t, database.DB.Create(&inv).Error)
+	assert.NoError(t, database.DB.Create(&models.SystemPatch{
+		SystemID:    inv.ID,
+		RhAccountID: rhAccountID,
+	}).Error)
+}
+
 // nolint: unparam
 func assertSystemInDB(t *testing.T, inventoryID string, rhAccountID *int, reporterID *int) {
-	var system models.SystemPlatform
+	var system models.SystemInventory
 	assert.NoError(t, database.DB.Where("inventory_id = ?::uuid", inventoryID).Find(&system).Error)
 	assert.Equal(t, system.InventoryID, inventoryID)
 
@@ -66,7 +84,7 @@ func assertSystemInDB(t *testing.T, inventoryID string, rhAccountID *int, report
 
 func assertSystemNotInDB(t *testing.T) {
 	var systemCount int64
-	assert.Nil(t, database.DB.Model(models.SystemPlatform{}).
+	assert.Nil(t, database.DB.Model(models.SystemInventory{}).
 		Where("inventory_id = ?::uuid", id).Count(&systemCount).Error)
 
 	assert.Equal(t, 0, int(systemCount))
@@ -173,7 +191,7 @@ func assertSystemReposInDB(t *testing.T, systemID int64, repos []string) {
 }
 
 func assertYumUpdatesInDB(t *testing.T, inventoryID string, yumUpdates *YumUpdates) {
-	var system models.SystemPlatform
+	var system models.SystemInventory
 	assert.NoError(t, database.DB.Where("inventory_id = ?::uuid", inventoryID).Find(&system).Error)
 	assert.Equal(t, system.InventoryID, inventoryID)
 	var systemYumUpdatesParsed vmaas.UpdatesV3Response
