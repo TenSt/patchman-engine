@@ -420,10 +420,15 @@ func storeOrUpdateSysPlatform(
 	host *Host,
 	colsToUpdate []string,
 ) error {
-	if err := tx.Where("rh_account_id = ? AND inventory_id = ?", system.RhAccountID, system.InventoryID).
-		Select("id").Find(system).Error; err != nil {
+	// Resolve system_inventory.id by account + inventory UUID (not via the system_platform view).
+	var existingID int64
+	if err := tx.Model(&models.SystemInventory{}).
+		Where("rh_account_id = ? AND inventory_id = ?::uuid", system.RhAccountID, system.InventoryID).
+		Select("id").
+		Scan(&existingID).Error; err != nil {
 		utils.LogWarn("err", err, "couldn't find system for update")
 	}
+	system.ID = existingID
 
 	// RETURNING from system_inventory upsert (id, unchanged_since, …)
 	txi := tx.Clauses(clause.Returning{
