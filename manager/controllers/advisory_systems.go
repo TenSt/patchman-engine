@@ -64,8 +64,8 @@ var AdvisorySystemOpts = ListOpts{
 		},
 	},
 	DefaultSort:  "-last_upload",
-	StableSort:   "sp.id",
-	SearchFields: []string{"sp.display_name"},
+	StableSort:   "si.id",
+	SearchFields: []string{"si.display_name"},
 }
 
 func advisorySystemsCommon(c *gin.Context) (*gorm.DB, *ListMeta, []string, error) {
@@ -98,7 +98,7 @@ func advisorySystemsCommon(c *gin.Context) (*gorm.DB, *ListMeta, []string, error
 	if err != nil {
 		return nil, nil, nil, err
 	} // Error handled in method itself
-	query, _ = ApplyInventoryFilter(filters, query, "sp.inventory_id")
+	query, _ = ApplyInventoryFilter(filters, query, "si.inventory_id")
 	query, meta, params, err := ListCommon(query, c, filters, opts)
 	// Error handled in method itself
 	return query, meta, params, err
@@ -275,7 +275,7 @@ func buildAdvisorySystemsQuery(db *gorm.DB, account int, groups map[string]strin
 		Select(selectQuery).
 		Joins("LEFT JOIN status st ON sa.status_id = st.id").
 		Where("am.name = ?", advisoryName).
-		Where("sp.stale = false")
+		Where("si.stale = false")
 
 	return query
 }

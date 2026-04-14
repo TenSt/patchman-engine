@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	// counts of systems from system_platform
+	// counts of systems from system_inventory (+ system_patch join in Systems())
 	nGroup1    int64 = 7
 	nGroup2    int64 = 2
 	nUngrouped int64 = 7
@@ -33,14 +33,16 @@ var testCases = []map[int64]map[string]string{
 	{nAll: nil},
 }
 
-func TestInventoryHostsJoin(t *testing.T) {
+func TestApplyInventoryWorkspaceFilter(t *testing.T) {
 	utils.SkipWithoutDB(t)
 	Configure()
 
 	for _, tc := range testCases {
 		for expectedCount, groups := range tc {
 			var count int64
-			InventoryHostsJoin(DB.Table("system_platform sp"), groups).Count(&count)
+			ApplyInventoryWorkspaceFilter(DB.Table("system_inventory si").
+				Joins("JOIN system_patch spatch ON si.id = spatch.system_id AND si.rh_account_id = spatch.rh_account_id"),
+				groups).Count(&count)
 			assert.Equal(t, expectedCount, count)
 		}
 	}

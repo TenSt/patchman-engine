@@ -72,28 +72,14 @@ func totalItems(tx *gorm.DB, cols string) (int, error) {
 	return int(count), err
 }
 
-// inventoryGroupsPrimarySI applies the same workspace rules as database.InventoryHostsJoin, for a query whose
-// primary row is already system_inventory si (no system_platform join).
-func inventoryGroupsPrimarySI(tx *gorm.DB, groups map[string]string) *gorm.DB {
-	if _, ok := groups[utils.KeyGrouped]; !ok {
-		if _, ok := groups[utils.KeyUngrouped]; ok {
-			return tx.Where("si.workspaces = '[]'")
-		}
-		return tx
-	}
-
-	db := database.DB.Where("si.workspaces @> ANY (?::jsonb[])", groups[utils.KeyGrouped])
-	if _, ok := groups[utils.KeyUngrouped]; ok {
-		db = db.Or("si.workspaces = '[]'")
-	}
-	return tx.Where(db)
-}
-
 func systemsAdvisoriesQuery(c *gin.Context, db *gorm.DB, acc int, groups map[string]string,
 	req SystemsAdvisoriesRequest) (*gorm.DB, *ListMeta, *Links, error) {
 	systems := req.Systems
 	advisories := req.Advisories
-	sysq := inventoryGroupsPrimarySI(db.Table("system_inventory si").Where("si.rh_account_id = ?", acc), groups).
+	sysq := database.ApplyInventoryWorkspaceFilter(
+		db.Table("system_inventory si").
+			Where("si.rh_account_id = ?", acc),
+		groups).
 		Distinct("si.rh_account_id, si.id, si.inventory_id").
 		// we need to join system_advisories to make `limit` work properly
 		// without this join it can happen that we display less items on some pages

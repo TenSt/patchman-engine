@@ -50,14 +50,15 @@ func CheckCachesValidRet() (bool, error) {
 	}
 	var counts []advisoryCount
 
-	err = tx.Select("sp.rh_account_id, sa.advisory_id," +
+	err = tx.Select("si.rh_account_id, sa.advisory_id," +
 		"count(*) filter (where sa.status_id = 0) as systems_installable," +
 		"count(*) as systems_applicable").
 		Table("system_advisories sa").
-		Joins("JOIN system_platform sp ON sa.rh_account_id = sp.rh_account_id AND sa.system_id = sp.id").
-		Where("sp.stale = false AND sp.last_evaluation IS NOT NULL").
-		Order("sp.rh_account_id, sa.advisory_id").
-		Group("sp.rh_account_id, sa.advisory_id").
+		Joins("JOIN system_inventory si ON sa.rh_account_id = si.rh_account_id AND sa.system_id = si.id").
+		Joins("JOIN system_patch spatch ON si.id = spatch.system_id AND si.rh_account_id = spatch.rh_account_id").
+		Where("si.stale = false AND spatch.last_evaluation IS NOT NULL").
+		Order("si.rh_account_id, sa.advisory_id").
+		Group("si.rh_account_id, sa.advisory_id").
 		Find(&counts).Error
 	if err != nil {
 		return false, err
@@ -412,9 +413,10 @@ func DeleteTemplate(t *testing.T, account int, templateUUID string) {
 
 func CheckTemplateSystems(t *testing.T, account int, templateUUID string, inventoryIDs []string) {
 	var dbInventoryIDs []string
-	err := DB.Table("system_platform as sp").Select("sp.inventory_id as id").
-		Joins("JOIN template tp ON tp.id = sp.template_id").
-		Where("sp.rh_account_id = ? AND tp.uuid = ?::uuid", account, templateUUID).
+	err := DB.Table("system_inventory si").Select("si.inventory_id as id").
+		Joins("JOIN system_patch spatch ON si.id = spatch.system_id AND si.rh_account_id = spatch.rh_account_id").
+		Joins("JOIN template tp ON tp.id = spatch.template_id AND tp.rh_account_id = spatch.rh_account_id").
+		Where("si.rh_account_id = ? AND tp.uuid = ?::uuid", account, templateUUID).
 		Order("id").
 		Find(&dbInventoryIDs).Error
 

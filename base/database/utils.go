@@ -27,14 +27,16 @@ func (j joinsT) apply(tx *gorm.DB) *gorm.DB {
 }
 
 func Systems(tx *gorm.DB, accountID int, groups map[string]string, joins ...join) *gorm.DB {
-	tx = tx.Table("system_platform sp").Where("sp.rh_account_id = ?", accountID)
+	tx = tx.Table("system_inventory si").
+		Joins("JOIN system_patch spatch ON si.id = spatch.system_id AND si.rh_account_id = spatch.rh_account_id").
+		Where("si.rh_account_id = ?", accountID)
 	tx = (joinsT)(joins).apply(tx)
-	return InventoryHostsJoin(tx, groups)
+	return ApplyInventoryWorkspaceFilter(tx, groups)
 }
 
 func SystemAdvisories(tx *gorm.DB, accountID int, groups map[string]string, joins ...join) *gorm.DB {
 	tx = Systems(tx, accountID, groups).
-		Joins("JOIN system_advisories sa on sa.system_id = sp.id AND sa.rh_account_id = ?", accountID)
+		Joins("JOIN system_advisories sa on sa.system_id = si.id AND sa.rh_account_id = ?", accountID)
 	return (joinsT)(joins).apply(tx)
 }
 
@@ -46,7 +48,7 @@ func SystemPackagesShort(tx *gorm.DB, accountID int, joins ...join) *gorm.DB {
 
 func SystemPackages(tx *gorm.DB, accountID int, groups map[string]string, joins ...join) *gorm.DB {
 	tx = Systems(tx, accountID, groups).
-		Joins("JOIN system_package2 spkg on spkg.system_id = sp.id AND spkg.rh_account_id = ?", accountID).
+		Joins("JOIN system_package2 spkg on spkg.system_id = si.id AND spkg.rh_account_id = ?", accountID).
 		Joins("JOIN package p on p.id = spkg.package_id").
 		Joins("JOIN package_name pn on pn.id = spkg.name_id")
 	return (joinsT)(joins).apply(tx)
@@ -65,12 +67,12 @@ func PackageByName(tx *gorm.DB, pkgName string, joins ...join) *gorm.DB {
 
 func SystemAdvisoriesByInventoryID(tx *gorm.DB, accountID int, groups map[string]string, inventoryID string,
 	joins ...join) *gorm.DB {
-	tx = SystemAdvisories(tx, accountID, groups).Where("sp.inventory_id = ?::uuid", inventoryID)
+	tx = SystemAdvisories(tx, accountID, groups).Where("si.inventory_id = ?::uuid", inventoryID)
 	return (joinsT)(joins).apply(tx)
 }
 
 func SystemAdvisoriesBySystemID(accountID int, systemID int64) *gorm.DB {
-	query := systemAdvisoriesQuery(accountID).Where("sp.id = ?", systemID)
+	query := systemAdvisoriesQuery(accountID).Where("si.id = ?", systemID)
 	return query
 }
 
@@ -81,8 +83,8 @@ func AdvisoryMetadata(tx *gorm.DB) *gorm.DB {
 
 func systemAdvisoriesQuery(accountID int) *gorm.DB {
 	query := DB.Table("system_advisories sa").Select("sa.*").
-		Joins("join system_platform sp ON sa.rh_account_id = sp.rh_account_id AND sa.system_id = sp.id").
-		Where("sa.rh_account_id = ? AND sp.rh_account_id = ?", accountID, accountID)
+		Joins("JOIN system_inventory si ON sa.rh_account_id = si.rh_account_id AND sa.system_id = si.id").
+		Where("sa.rh_account_id = ? AND si.rh_account_id = ?", accountID, accountID)
 	return query
 }
 
@@ -238,8 +240,7 @@ func ReadReplicaConfigured() bool {
 	return len(utils.CoreCfg.DBReadReplicaHost) > 0 && utils.CoreCfg.DBReadReplicaPort != 0
 }
 
-func InventoryHostsJoin(tx *gorm.DB, groups map[string]string) *gorm.DB {
-	tx = tx.Joins("JOIN system_inventory si ON si.inventory_id = sp.inventory_id")
+func ApplyInventoryWorkspaceFilter(tx *gorm.DB, groups map[string]string) *gorm.DB {
 	if _, ok := groups[utils.KeyGrouped]; !ok {
 		if _, ok := groups[utils.KeyUngrouped]; ok {
 			// show only systems with '[]' group
@@ -256,9 +257,9 @@ func InventoryHostsJoin(tx *gorm.DB, groups map[string]string) *gorm.DB {
 	return tx.Where(db)
 }
 
-// LEFT JOIN templates to sp (system_platform)
+// LEFT JOIN templates to spatch (system_patch)
 func JoinTemplates(tx *gorm.DB) *gorm.DB {
-	return tx.Joins("LEFT JOIN template t ON sp.template_id = t.id AND sp.rh_account_id = t.rh_account_id")
+	return tx.Joins("LEFT JOIN template t ON spatch.template_id = t.id AND spatch.rh_account_id = t.rh_account_id")
 }
 
 // JOIN advisory_metadata to sa (system_advisories)

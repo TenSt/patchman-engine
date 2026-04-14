@@ -63,7 +63,7 @@ func ApplySort(c *gin.Context, tx *gorm.DB, fieldExprs database.AttrMap,
 		tx = tx.Order(column)
 		appliedFields = append(appliedFields, origEnteredField)
 	}
-	tx.Order(stableSort + " ASC")
+	tx = tx.Order(stableSort + " ASC")
 	return tx, appliedFields, nil
 }
 
@@ -131,6 +131,11 @@ func ExportListCommon(tx *gorm.DB, c *gin.Context, opts ListOpts) (*gorm.DB, err
 	if err != nil {
 		utils.LogAndRespBadRequest(c, err, "Failed to apply filters")
 		return nil, errors.Wrap(err, "filters applying failed")
+	}
+	tx, _, err = ApplySort(c, tx, opts.Fields, opts.DefaultSort, opts.StableSort)
+	if err != nil {
+		utils.LogAndRespBadRequest(c, err, err.Error())
+		return nil, errors.Wrap(err, "invalid sort")
 	}
 	return tx, nil
 }
