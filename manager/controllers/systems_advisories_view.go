@@ -33,14 +33,14 @@ type AdvisoriesSystemsResponse struct {
 }
 
 type systemsAdvisoriesDBLoad struct {
-	SystemID   SystemID     `query:"sp.inventory_id" gorm:"column:system_id"`
+	SystemID   SystemID     `query:"si.inventory_id" gorm:"column:system_id"`
 	AdvisoryID AdvisoryName `query:"am.name" gorm:"column:advisory_id"`
 }
 
 type systemsAdvisoriesViewSubDBLookup struct {
-	RhAccountID int      `query:"sp.rh_account_id" gorm:"column:rh_account_id"`
-	ID          int64    `query:"sp.id" gorm:"column:id"`
-	SystemID    SystemID `query:"sp.inventory_id" gorm:"column:inventory_id"`
+	RhAccountID int      `query:"si.rh_account_id" gorm:"column:rh_account_id"`
+	ID          int64    `query:"si.id" gorm:"column:id"`
+	SystemID    SystemID `query:"si.inventory_id" gorm:"column:inventory_id"`
 }
 
 type advisoriesSystemsViewSubDBLookup struct {
@@ -72,18 +72,35 @@ func totalItems(tx *gorm.DB, cols string) (int, error) {
 	return int(count), err
 }
 
+// inventoryGroupsPrimarySI applies the same workspace rules as database.InventoryHostsJoin, for a query whose
+// primary row is already system_inventory si (no system_platform join).
+func inventoryGroupsPrimarySI(tx *gorm.DB, groups map[string]string) *gorm.DB {
+	if _, ok := groups[utils.KeyGrouped]; !ok {
+		if _, ok := groups[utils.KeyUngrouped]; ok {
+			return tx.Where("si.workspaces = '[]'")
+		}
+		return tx
+	}
+
+	db := database.DB.Where("si.workspaces @> ANY (?::jsonb[])", groups[utils.KeyGrouped])
+	if _, ok := groups[utils.KeyUngrouped]; ok {
+		db = db.Or("si.workspaces = '[]'")
+	}
+	return tx.Where(db)
+}
+
 func systemsAdvisoriesQuery(c *gin.Context, db *gorm.DB, acc int, groups map[string]string,
 	req SystemsAdvisoriesRequest) (*gorm.DB, *ListMeta, *Links, error) {
 	systems := req.Systems
 	advisories := req.Advisories
-	sysq := database.Systems(db, acc, groups).
-		Distinct("sp.rh_account_id, sp.id, sp.inventory_id").
+	sysq := inventoryGroupsPrimarySI(db.Table("system_inventory si").Where("si.rh_account_id = ?", acc), groups).
+		Distinct("si.rh_account_id, si.id, si.inventory_id").
 		// we need to join system_advisories to make `limit` work properly
 		// without this join it can happen that we display less items on some pages
-		Joins(`LEFT JOIN system_advisories sa ON sa.system_id = sp.id
-			AND sa.rh_account_id = sp.rh_account_id AND sa.rh_account_id = ?`, acc)
+		Joins(`LEFT JOIN system_advisories sa ON sa.system_id = si.id
+			AND sa.rh_account_id = si.rh_account_id AND sa.rh_account_id = ?`, acc)
 	if len(systems) > 0 {
-		sysq = sysq.Where("sp.inventory_id in (?)", systems)
+		sysq = sysq.Where("si.inventory_id in (?)", systems)
 	}
 
 	filters, err := ParseAllFilters(c, systemsAdvisoriesViewOpts)
@@ -91,29 +108,29 @@ func systemsAdvisoriesQuery(c *gin.Context, db *gorm.DB, acc int, groups map[str
 		return nil, nil, nil, err
 	} // Error handled by method itself
 
-	sysq, _ = ApplyInventoryFilter(filters, sysq, "sp.inventory_id")
+	sysq, _ = ApplyInventoryFilter(filters, sysq, "si.inventory_id")
 	sysq, meta, params, err := ListCommonNoLimitOffset(sysq, c, filters, systemsAdvisoriesViewOpts)
 	if err != nil {
 		return nil, nil, nil, err
 	} // Error handled by method itself
 
-	total, err := totalItems(sysq, "sp.rh_account_id, sp.id, sp.inventory_id")
+	total, err := totalItems(sysq, "si.rh_account_id, si.id, si.inventory_id")
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
 	sysq = ApplyLimitOffset(sysq, meta)
 
-	query := db.Table("(?) as sp", sysq).
+	query := db.Table("(?) as si", sysq).
 		Select(systemsAdvisoriesSelect).
-		Joins(`LEFT JOIN system_advisories sa ON sa.system_id = sp.id
-			AND sa.rh_account_id = sp.rh_account_id AND sa.rh_account_id = ? AND sa.status_id = 0`, acc)
+		Joins(`LEFT JOIN system_advisories sa ON sa.system_id = si.id
+			AND sa.rh_account_id = si.rh_account_id AND sa.rh_account_id = ? AND sa.status_id = 0`, acc)
 	if len(advisories) > 0 {
 		query = query.Joins("LEFT JOIN advisory_metadata am ON am.id = sa.advisory_id AND am.name in (?)", advisories)
 	} else {
 		query = query.Joins("LEFT JOIN advisory_metadata am ON am.id = sa.advisory_id")
 	}
-	query = query.Order("sp.inventory_id, am.id")
+	query = query.Order("si.inventory_id, am.id")
 
 	meta, links, err := UpdateMetaLinks(c, meta, total, nil, params...)
 	return query, meta, links, err
@@ -149,18 +166,18 @@ func advisoriesSystemsQuery(c *gin.Context, db *gorm.DB, acc int, groups map[str
 
 	advq = ApplyLimitOffset(advq, meta)
 
-	spJoin := "LEFT JOIN system_platform sp ON sp.id = sa.system_id AND sa.rh_account_id = sp.rh_account_id"
+	siJoin := "LEFT JOIN system_inventory si ON si.id = sa.system_id AND sa.rh_account_id = si.rh_account_id"
 	query := db.Table("(?) as am", advq).
 		Distinct(systemsAdvisoriesSelect).
 		Joins("LEFT JOIN system_advisories sa ON am.id = sa.advisory_id AND sa.rh_account_id = ? AND sa.status_id = 0", acc)
 	if len(systems) > 0 {
-		query = query.Joins(fmt.Sprintf("%s AND sp.inventory_id in (?::uuid)", spJoin), systems)
+		query = query.Joins(fmt.Sprintf("%s AND si.inventory_id in (?::uuid)", siJoin), systems)
 	} else {
-		query = query.Joins(spJoin)
+		query = query.Joins(siJoin)
 	}
 	query = query.
-		Where("sp.stale = false").
-		Order("am.name, sp.inventory_id")
+		Where("si.stale = false").
+		Order("am.name, si.inventory_id")
 
 	meta, links, err := UpdateMetaLinks(c, meta, total, nil, params...)
 	return query, meta, links, err

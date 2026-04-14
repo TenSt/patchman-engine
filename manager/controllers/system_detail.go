@@ -65,7 +65,7 @@ func SystemDetailHandler(c *gin.Context) {
 	db := middlewares.DBFromContext(c)
 	query := database.Systems(db, account, groups, database.JoinTemplates).
 		Select(database.MustGetSelect(&systemDetail)).
-		Where("sp.inventory_id = ?::uuid", inventoryID)
+		Where("si.inventory_id = ?::uuid", inventoryID)
 
 	err := query.Take(&systemDetail).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -100,11 +100,16 @@ func SystemDetailHandler(c *gin.Context) {
 // @Failure 500 {object} utils.ErrorResponse
 // @Router /systems/{inventory_id}/vmaas_json [get]
 func SystemVmaasJSONHandler(c *gin.Context) {
-	system := systemJSONsCommon(c, "sp.vmaas_json")
+	system := systemJSONsCommon(c, "si.vmaas_json")
 	if system == nil {
 		return // abort handled by `systemJSONsCommon`
 	}
-	data, err := utils.ParseVmaasJSON(system)
+	if system.VmaasJSON == nil {
+		utils.LogAndRespError(c, errors.New("missing vmaas json"), "couldn't parse vmaas json")
+		return
+	}
+	var data vmaas.UpdatesV3Request
+	err := sonic.Unmarshal([]byte(*system.VmaasJSON), &data)
 	if err != nil {
 		utils.LogAndRespError(c, err, "couldn't parse vmaas json")
 		return
@@ -127,7 +132,7 @@ func SystemVmaasJSONHandler(c *gin.Context) {
 // @Failure 500 {object} utils.ErrorResponse
 // @Router /systems/{inventory_id}/yum_updates [get]
 func SystemYumUpdatesHandler(c *gin.Context) {
-	system := systemJSONsCommon(c, "sp.yum_updates")
+	system := systemJSONsCommon(c, "si.yum_updates")
 	if system == nil {
 		return // abort handled by `systemJSONsCommon`
 	}
@@ -147,7 +152,7 @@ func SystemYumUpdatesHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, &resp)
 }
 
-func systemJSONsCommon(c *gin.Context, column string) *models.SystemPlatform {
+func systemJSONsCommon(c *gin.Context, column string) *models.SystemInventory {
 	account := c.GetInt(utils.KeyAccount)
 	groups := c.GetStringMapString(utils.KeyInventoryGroups)
 
@@ -166,11 +171,11 @@ func systemJSONsCommon(c *gin.Context, column string) *models.SystemPlatform {
 		return nil
 	}
 
-	var system models.SystemPlatform
+	var system models.SystemInventory
 	db := middlewares.DBFromContext(c)
 	query := database.Systems(db, account, groups).
 		Select(column).
-		Where("sp.inventory_id = ?::uuid", inventoryID)
+		Where("si.inventory_id = ?::uuid", inventoryID)
 
 	err := query.Take(&system).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
