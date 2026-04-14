@@ -172,6 +172,31 @@ func (SystemPatch) TableName() string {
 	return "system_patch"
 }
 
+// SystemPlatformV2 is a non-persisted aggregate of one system_inventory row and its
+// matching system_patch row. It is not a database table: do not implement TableName,
+// and do not pass it to gorm.DB.Model as a single-table model—load it with explicit
+// SQL or Table/Joins on system_inventory and system_patch.
+type SystemPlatformV2 struct {
+	Inventory SystemInventory
+	Patch     SystemPatch
+}
+
+func (v *SystemPlatformV2) GetInventoryID() string {
+	if v == nil {
+		return ""
+	}
+	return v.Inventory.GetInventoryID()
+}
+
+// InternalSystemID is the internal numeric primary key: system_inventory.id. For a
+// loaded aggregate it equals system_patch.system_id.
+func (v *SystemPlatformV2) InternalSystemID() int64 {
+	if v == nil {
+		return 0
+	}
+	return v.Inventory.ID
+}
+
 type String struct {
 	ID    []byte `gorm:"primaryKey"`
 	Value string
