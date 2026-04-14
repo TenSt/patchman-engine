@@ -168,15 +168,31 @@ func TestReassignTemplateSystems2(t *testing.T) {
 	database.DeleteTemplate(t, templateAccount, template2)
 }
 
-func testUpdateTemplateBadRequest(t *testing.T, system models.SystemPlatform) {
+func testUpdateTemplateBadRequest(t *testing.T, satelliteManaged, bootc bool) {
 	core.SetupTestEnvironment()
 
 	database.CreateTemplate(t, templateAccount, templateUUID, templateSystems)
 	defer database.DeleteTemplate(t, templateAccount, templateUUID)
 
-	tx := database.DB.Create(&system)
-	assert.Nil(t, tx.Error)
-	defer database.DB.Delete(system)
+	inv := models.SystemInventory{
+		InventoryID:      "99999999-0000-0000-0000-000000000015",
+		RhAccountID:      templateAccount,
+		DisplayName:      "template_bad_request_test",
+		Tags:             []byte("[]"),
+		BuiltPkgcache:    true,
+		SatelliteManaged: satelliteManaged,
+		Bootc:            bootc,
+	}
+	assert.Nil(t, database.DB.Create(&inv).Error)
+	assert.Nil(t, database.DB.Create(&models.SystemPatch{
+		SystemID:    inv.ID,
+		RhAccountID: templateAccount,
+	}).Error)
+	defer func() {
+		assert.Nil(t, database.DB.Where("system_id = ? AND rh_account_id = ?", inv.ID, templateAccount).
+			Delete(&models.SystemPatch{}).Error)
+		assert.Nil(t, database.DB.Delete(&inv).Error)
+	}()
 
 	data := `{
 		"systems": {
@@ -192,23 +208,17 @@ func testUpdateTemplateBadRequest(t *testing.T, system models.SystemPlatform) {
 }
 
 func TestUpdateTemplateBadRequest(t *testing.T) {
-	system := models.SystemPlatform{
-		InventoryID:   "99999999-0000-0000-0000-000000000015",
-		RhAccountID:   templateAccount,
-		BuiltPkgcache: true,
+	cases := []struct {
+		name             string
+		satelliteManaged bool
+		bootc            bool
+	}{
+		{name: "satellite_system_test", satelliteManaged: true},
+		{name: "bootc_system_test", bootc: true},
 	}
-	satelliteSystem := system
-	satelliteSystem.DisplayName = "satellite_system_test"
-	satelliteSystem.SatelliteManaged = true
-
-	bootcSystem := system
-	bootcSystem.DisplayName = "bootc_system_test"
-	bootcSystem.Bootc = true
-
-	systems := []models.SystemPlatform{satelliteSystem, bootcSystem}
-	for _, system := range systems {
-		t.Run(fmt.Sprint(system.DisplayName), func(t *testing.T) {
-			testUpdateTemplateBadRequest(t, system)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			testUpdateTemplateBadRequest(t, tc.satelliteManaged, tc.bootc)
 		})
 	}
 }
