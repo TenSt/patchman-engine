@@ -647,11 +647,14 @@ func loadSystemData(accountID int, inventoryID string) (*models.SystemPlatform, 
 	tStart := time.Now()
 	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("data-loading"))
 
-	var system models.SystemPlatform
-	err := database.DB.Where("rh_account_id = ?", accountID).
-		Where("inventory_id = ?::uuid", inventoryID).
-		Find(&system).Error
-	return &system, err
+	v2, err := loadSystemPlatformV2(database.DB, accountID, inventoryID)
+	if err != nil {
+		return &models.SystemPlatform{}, err
+	}
+	if v2 == nil {
+		return &models.SystemPlatform{}, nil
+	}
+	return systemPlatformV2ToSystemPlatform(v2), nil
 }
 
 func validSystem(accountID int, systemID int64) bool {
