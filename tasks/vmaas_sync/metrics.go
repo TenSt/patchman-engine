@@ -157,7 +157,7 @@ var querySystemCountColumns = database.MustGetSelect(&systemCountColumns{})
 // Result is loaded into the map {"stale_on:last1D": 12, "stale_off:last1D": 3, ...}.
 func getSystemCounts() (map[systemsCntLabels]int, error) {
 	var row systemCountColumns
-	err := tasks.CancelableDB().Model(&models.SystemPlatform{}).
+	err := tasks.CancelableDB().Model(&models.SystemInventory{}).
 		Select(querySystemCountColumns).Take(&row).Error
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to load systems count metrics")
@@ -255,12 +255,12 @@ type SystemAdvisoryStats struct {
 	MaxSec int
 }
 
-// Old query was inserting ORDER BY "system_platform"."max_all" AND max_all
+// Old query was inserting ORDER BY "system_patch"."max_all" AND max_all
 func getSystemAdvisorieStats() (stats SystemAdvisoryStats, err error) {
 	err = tasks.CancelableDB().Raw("SELECT MAX(installable_advisory_count_cache) as max_all, " +
 		"MAX(installable_advisory_enh_count_cache) as max_enh,MAX(installable_advisory_bug_count_cache) " +
 		"as max_bug, MAX(installable_advisory_sec_count_cache) as max_sec FROM " +
-		"system_platform ORDER BY max_all LIMIT 1").Scan(&stats).Error
+		"system_patch ORDER BY max_all LIMIT 1").Scan(&stats).Error
 	if err != nil {
 		return stats, errors.Wrap(err, "unable to get system advisory stats from db")
 	}

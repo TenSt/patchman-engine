@@ -49,16 +49,17 @@ func getRepoBasedInventoryIDs(repos []string, packages []string) ([]mqueue.EvalD
 		return ids, nil
 	}
 
-	query := tasks.CancelableDB().Table("system_platform sp").
-		Joins("JOIN system_repo sr ON  sp.rh_account_id = sr.rh_account_id AND sp.id = sr.system_id").
+	query := tasks.CancelableDB().Table("system_inventory si").
+		Joins("JOIN system_patch sp ON si.id = sp.system_id AND si.rh_account_id = sp.rh_account_id").
+		Joins("JOIN system_repo sr ON si.rh_account_id = sr.rh_account_id AND si.id = sr.system_id").
 		Joins("JOIN repo ON repo.id = sr.repo_id").
-		Joins("JOIN rh_account ra ON ra.id = sp.rh_account_id").
-		Joins("JOIN system_package2 spkg ON spkg.rh_account_id = sp.rh_account_id AND spkg.system_id = sp.id").
+		Joins("JOIN rh_account ra ON ra.id = si.rh_account_id").
+		Joins("JOIN system_package2 spkg ON spkg.rh_account_id = si.rh_account_id AND spkg.system_id = si.id").
 		Joins("JOIN package_name pn ON pn.id = spkg.name_id").
-		Select("distinct sp.inventory_id, sp.rh_account_id, ra.org_id").
+		Select("distinct si.inventory_id, si.rh_account_id, ra.org_id").
 		Where("repo.name IN (?)", repos).
 		Where("pn.name IN (?)", packages).
-		Order("sp.rh_account_id")
+		Order("si.rh_account_id")
 	if err := query.Scan(&ids).Error; err != nil {
 		return nil, err
 	}

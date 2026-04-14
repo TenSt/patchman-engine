@@ -77,22 +77,23 @@ func getCounts(pkgSysCounts *[]models.PackageAccountData, accID *int) error {
 		tx.Exec("SET work_mem TO '?'", utils.CoreCfg.DBWorkMem)
 		defer tx.Exec("RESET work_mem")
 
-		q := tx.Table("system_platform sp").
+		q := tx.Table("system_inventory si").
 			Select(`
-				sp.rh_account_id rh_account_id,
+				si.rh_account_id rh_account_id,
 				spkg.name_id package_name_id,
 				count(*) as systems_installed,
 				count(*) filter (where spkg.installable_id is not null) as systems_installable,
 				count(*) filter (where spkg.installable_id is not null or spkg.applicable_id is not null) as systems_applicable
 			`).
-			Joins("JOIN system_package2 spkg ON sp.id = spkg.system_id AND sp.rh_account_id = spkg.rh_account_id").
-			Joins("JOIN rh_account acc ON sp.rh_account_id = acc.id").
-			Where("sp.packages_installed > 0 AND sp.stale = FALSE").
-			Group("sp.rh_account_id, spkg.name_id").
-			Order("sp.rh_account_id, spkg.name_id")
+			Joins("JOIN system_patch sp ON si.id = sp.system_id AND si.rh_account_id = sp.rh_account_id").
+			Joins("JOIN system_package2 spkg ON si.id = spkg.system_id AND si.rh_account_id = spkg.rh_account_id").
+			Joins("JOIN rh_account acc ON si.rh_account_id = acc.id").
+			Where("sp.packages_installed > 0 AND si.stale = FALSE").
+			Group("si.rh_account_id, spkg.name_id").
+			Order("si.rh_account_id, spkg.name_id")
 		if accID != nil {
 			utils.LogDebug("Getting counts for single account")
-			q.Where("sp.rh_account_id = ?", *accID)
+			q.Where("si.rh_account_id = ?", *accID)
 		} else {
 			utils.LogDebug("Getting counts for multiple accounts")
 			q.Where("acc.valid_package_cache = FALSE")

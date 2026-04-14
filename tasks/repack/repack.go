@@ -67,7 +67,8 @@ func RunRepack() {
 
 	TABLES := map[string]string{
 		"system_package2":   "rh_account_id,system_id",
-		"system_platform":   "rh_account_id,id,inventory_id",
+		"system_inventory":  "rh_account_id,id,inventory_id",
+		"system_patch":      "rh_account_id,system_id",
 		"system_advisories": "rh_account_id,system_id",
 	}
 
