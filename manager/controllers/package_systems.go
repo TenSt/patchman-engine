@@ -18,8 +18,8 @@ var PackageSystemsOpts = ListOpts{
 	// By default, we show only fresh systems. If all systems are required, you must pass in:true,false filter into the api
 	DefaultFilters: map[string]FilterData{},
 	DefaultSort:    "inventory_id",
-	StableSort:     "sp.id",
-	SearchFields:   []string{"sp.display_name"},
+	StableSort:     "si.id",
+	SearchFields:   []string{"si.display_name"},
 }
 
 //nolint:lll
@@ -59,7 +59,7 @@ func packageSystemsQuery(db *gorm.DB, acc int, groups map[string]string, package
 	query := database.SystemPackages(db, acc, groups,
 		database.JoinTemplates, database.JoinInstallableApplicablePackages).
 		Select(PackageSystemsSelect).
-		Where("sp.stale = false").
+		Where("si.stale = false").
 		Where("pn.name = ?", packageName).
 		Where("spkg.package_id in (?)", packageIDs)
 	return query
@@ -92,7 +92,7 @@ func packageSystemsCommon(db *gorm.DB, c *gin.Context) (*gorm.DB, *ListMeta, []s
 	if err != nil {
 		return nil, nil, nil, err
 	} // Error handled in method itself
-	query, _ = ApplyInventoryFilter(filters, query, "sp.inventory_id")
+	query, _ = ApplyInventoryFilter(filters, query, "si.inventory_id")
 	query, meta, params, err := ListCommon(query, c, filters, PackageSystemsOpts)
 	// Error handled in method itself
 	return query, meta, params, err

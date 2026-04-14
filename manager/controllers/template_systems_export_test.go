@@ -26,20 +26,31 @@ func TestTemplateSystemsExportJSON(t *testing.T) {
 	CheckResponse(t, w, http.StatusOK, &output)
 	assert.Equal(t, 2, len(output))
 
-	assert.Equal(t, "00000000-0000-0000-0000-000000000001", output[0].ID)
-	assert.Equal(t, "00000000-0000-0000-0000-000000000001", output[0].DisplayName)
-	assert.Equal(t, "RHEL 8.10", output[0].OS)
-	assert.Equal(t, "8.10", output[0].Rhsm)
-	assert.Equal(t, 2, output[0].InstallableRhsaCount)
-	assert.Equal(t, 2, output[0].InstallableRhbaCount)
-	assert.Equal(t, 1, output[0].InstallableRheaCount)
+	// Export uses the same default sort as the list API (-display_name), so UUID ...002 sorts before ...001.
+	assert.Equal(t, "00000000-0000-0000-0000-000000000002", output[0].ID)
+	assert.Equal(t, "00000000-0000-0000-0000-000000000002", output[0].DisplayName)
+	assert.Equal(t, "RHEL 8.1", output[0].OS)
+	assert.Equal(t, "8.1", output[0].Rhsm)
+	assert.Equal(t, 0, output[0].InstallableRhsaCount)
+	assert.Equal(t, 0, output[0].InstallableRhbaCount)
+	assert.Equal(t, 0, output[0].InstallableRheaCount)
 	assert.Equal(t, 0, output[0].InstallableOtherCount)
-	assert.Equal(t, 2, output[0].ApplicableRhsaCount)
-	assert.Equal(t, 3, output[0].ApplicableRhbaCount)
-	assert.Equal(t, 3, output[0].ApplicableRheaCount)
+	assert.Equal(t, 0, output[0].ApplicableRhsaCount)
+	assert.Equal(t, 0, output[0].ApplicableRhbaCount)
+	assert.Equal(t, 1, output[0].ApplicableRheaCount)
 	assert.Equal(t, 0, output[0].ApplicableOtherCount)
-	assert.Equal(t, "00000000-0000-0000-0000-000000000002", output[1].ID)
-	assert.Equal(t, "00000000-0000-0000-0000-000000000002", output[1].DisplayName)
+	assert.Equal(t, "00000000-0000-0000-0000-000000000001", output[1].ID)
+	assert.Equal(t, "00000000-0000-0000-0000-000000000001", output[1].DisplayName)
+	assert.Equal(t, "RHEL 8.10", output[1].OS)
+	assert.Equal(t, "8.10", output[1].Rhsm)
+	assert.Equal(t, 2, output[1].InstallableRhsaCount)
+	assert.Equal(t, 2, output[1].InstallableRhbaCount)
+	assert.Equal(t, 1, output[1].InstallableRheaCount)
+	assert.Equal(t, 0, output[1].InstallableOtherCount)
+	assert.Equal(t, 2, output[1].ApplicableRhsaCount)
+	assert.Equal(t, 3, output[1].ApplicableRhbaCount)
+	assert.Equal(t, 3, output[1].ApplicableRheaCount)
+	assert.Equal(t, 0, output[1].ApplicableOtherCount)
 }
 
 func TestTemplateSystemsExportCSV(t *testing.T) {
@@ -54,11 +65,16 @@ func TestTemplateSystemsExportCSV(t *testing.T) {
 	assert.Equal(t, 4, len(lines))
 	assert.Equal(t, TemplateCsvHeader, lines[0])
 
+	assert.Equal(t, "00000000-0000-0000-0000-000000000002,00000000-0000-0000-0000-000000000002,RHEL 8.1,"+
+		"8.1,0,0,0,0,0,0,1,0,\"[{'key':'k1','namespace':'ns1','value':'val1'},"+
+		"{'key':'k2','namespace':'ns1','value':'val2'},{'key':'k3','namespace':'ns1','value':'val3'}]\","+
+		"\"[{'id':'inventory-group-1','name':'group1'}]\",2018-09-22T16:00:00Z",
+		lines[1])
 	assert.Equal(t, "00000000-0000-0000-0000-000000000001,00000000-0000-0000-0000-000000000001,RHEL 8.10,"+
 		"8.10,2,2,1,0,2,3,3,0,\"[{'key':'k1','namespace':'ns1','value':'val1'},"+
 		"{'key':'k2','namespace':'ns1','value':'val2'}]\","+
 		"\"[{'id':'inventory-group-1','name':'group1'}]\",2020-09-22T16:00:00Z",
-		lines[1])
+		lines[2])
 }
 
 func TestTemplateSystemsExportWrongFormat(t *testing.T) {
@@ -93,7 +109,7 @@ func TestExportTemplateSystemsTags(t *testing.T) {
 	CheckResponse(t, w, http.StatusOK, &output)
 
 	assert.Equal(t, 2, len(output))
-	assert.Equal(t, "00000000-0000-0000-0000-000000000001", output[0].ID)
+	assert.Equal(t, "00000000-0000-0000-0000-000000000002", output[0].ID)
 }
 
 func TestExportTemplateSystemsTagsInvalid(t *testing.T) {
@@ -116,5 +132,5 @@ func TestTemplateSystemsExportWorkloads(t *testing.T) {
 	CheckResponse(t, w, http.StatusOK, &output)
 
 	assert.Equal(t, 2, len(output))
-	assert.Equal(t, "00000000-0000-0000-0000-000000000001", output[0].ID)
+	assert.Equal(t, "00000000-0000-0000-0000-000000000002", output[0].ID)
 }

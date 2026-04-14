@@ -33,9 +33,9 @@ type TemplateSystemsUpdateRequest struct {
 }
 
 type SystemTemplateDBLookup struct {
-	InventoryID      string `query:"sp.inventory_id"`
-	SatelliteManaged bool   `query:"sp.satellite_managed"`
-	Bootc            bool   `query:"sp.bootc"`
+	InventoryID      string `query:"si.inventory_id"`
+	SatelliteManaged bool   `query:"si.satellite_managed"`
+	Bootc            bool   `query:"si.bootc"`
 }
 
 // @Summary Add systems to a template
@@ -178,7 +178,7 @@ func templateArchVersionMatch(
 	}{}
 	var err error
 	err = database.Systems(db, acc, groups).
-		Select("si.inventory_id as inventory_id, si.os_major as version, sp.arch as arch").
+		Select("si.inventory_id as inventory_id, si.os_major as version, si.arch as arch").
 		Where("si.inventory_id in (?)", inventoryIDs).Find(&sysArchVersions).Error
 	if err != nil {
 		return err
@@ -278,7 +278,8 @@ func checkInventoryIDs(db *gorm.DB, accountID int, inventoryIDs []string, groups
 	var satelliteIDs []string
 	var bootcIDs []string
 	err = database.Systems(db, accountID, groups).
-		Where("sp.inventory_id IN (?::uuid)", inventoryIDs).
+		Select("si.inventory_id, si.satellite_managed, si.bootc").
+		Where("si.inventory_id IN (?::uuid)", inventoryIDs).
 		Scan(&containingSystems).Error
 	if err != nil {
 		return errors2.Join(base.ErrDatabase, err)

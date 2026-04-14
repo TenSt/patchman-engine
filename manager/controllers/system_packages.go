@@ -61,7 +61,7 @@ func systemPackageQuery(db *gorm.DB, account int, groups map[string]string, inve
 		Joins("LEFT JOIN strings AS descr ON p.description_hash = descr.id").
 		Joins("LEFT JOIN strings AS sum ON p.summary_hash = sum.id").
 		Select(SystemPackagesSelect).
-		Where("sp.inventory_id = ?::uuid", inventoryID)
+		Where("si.inventory_id = ?::uuid", inventoryID)
 
 	return query
 }

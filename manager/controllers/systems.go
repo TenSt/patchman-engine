@@ -27,17 +27,17 @@ var SystemOpts = ListOpts{
 		},
 	},
 	DefaultSort:  "-last_upload",
-	StableSort:   "sp.id",
-	SearchFields: []string{"sp.display_name"},
+	StableSort:   "si.id",
+	SearchFields: []string{"si.display_name"},
 }
 
 type SystemsID struct {
-	ID string `query:"sp.inventory_id" gorm:"column:inventory_id"`
+	ID string `query:"si.inventory_id" gorm:"column:inventory_id"`
 	MetaTotalHelper
 }
 
 type SystemsSatelliteManagedID struct {
-	ID string `query:"sp.inventory_id" gorm:"column:inventory_id"`
+	ID string `query:"si.inventory_id" gorm:"column:inventory_id"`
 	SystemSatelliteManaged
 	MetaTotalHelper
 }
@@ -46,9 +46,9 @@ type SystemsSatelliteManagedID struct {
 type SystemDBLookupCommon struct {
 	SystemIDAttribute
 	MetaTotalHelper
-	TotalPatched   int `json:"-" csv:"-" query:"count(*) filter (where sp.stale = false and sp.packages_installable = 0) over ()" gorm:"column:total_patched"`
-	TotalUnpatched int `json:"-" csv:"-" query:"count(*) filter (where sp.stale = false and sp.packages_installable > 0) over ()" gorm:"column:total_unpatched"`
-	TotalStale     int `json:"-" csv:"-" query:"count(*) filter (where sp.stale = true) over ()" gorm:"column:total_stale"`
+	TotalPatched   int `json:"-" csv:"-" query:"count(*) filter (where si.stale = false and spatch.packages_installable = 0) over ()" gorm:"column:total_patched"`
+	TotalUnpatched int `json:"-" csv:"-" query:"count(*) filter (where si.stale = false and spatch.packages_installable > 0) over ()" gorm:"column:total_unpatched"`
+	TotalStale     int `json:"-" csv:"-" query:"count(*) filter (where si.stale = true) over ()" gorm:"column:total_stale"`
 }
 
 type SystemDBLookup struct {
@@ -67,13 +67,13 @@ type SystemItemAttributes struct {
 	OSAttributes
 	SystemTags
 
-	LastEvaluation *time.Time `json:"last_evaluation" csv:"last_evaluation" query:"sp.last_evaluation" gorm:"column:last_evaluation"`
-	RhsaCount      int        `json:"rhsa_count" csv:"rhsa_count" query:"sp.installable_advisory_sec_count_cache" gorm:"column:rhsa_count"`
-	RhbaCount      int        `json:"rhba_count" csv:"rhba_count" query:"sp.installable_advisory_bug_count_cache" gorm:"column:rhba_count"`
-	RheaCount      int        `json:"rhea_count" csv:"rhea_count" query:"sp.installable_advisory_enh_count_cache" gorm:"column:rhea_count"`
-	OtherCount     int        `json:"other_count" csv:"other_count" query:"(sp.installable_advisory_count_cache - sp.installable_advisory_sec_count_cache - sp.installable_advisory_bug_count_cache - sp.installable_advisory_enh_count_cache)" gorm:"column:other_count"`
+	LastEvaluation *time.Time `json:"last_evaluation" csv:"last_evaluation" query:"spatch.last_evaluation" gorm:"column:last_evaluation"`
+	RhsaCount      int        `json:"rhsa_count" csv:"rhsa_count" query:"spatch.installable_advisory_sec_count_cache" gorm:"column:rhsa_count"`
+	RhbaCount      int        `json:"rhba_count" csv:"rhba_count" query:"spatch.installable_advisory_bug_count_cache" gorm:"column:rhba_count"`
+	RheaCount      int        `json:"rhea_count" csv:"rhea_count" query:"spatch.installable_advisory_enh_count_cache" gorm:"column:rhea_count"`
+	OtherCount     int        `json:"other_count" csv:"other_count" query:"(spatch.installable_advisory_count_cache - spatch.installable_advisory_sec_count_cache - spatch.installable_advisory_bug_count_cache - spatch.installable_advisory_enh_count_cache)" gorm:"column:other_count"`
 
-	PackagesInstalled int `json:"packages_installed" csv:"packages_installed" query:"sp.packages_installed" gorm:"column:packages_installed"`
+	PackagesInstalled int `json:"packages_installed" csv:"packages_installed" query:"spatch.packages_installed" gorm:"column:packages_installed"`
 
 	BaselineNameAttr
 
@@ -82,16 +82,16 @@ type SystemItemAttributes struct {
 	SystemStale
 	SystemSatelliteManaged
 	SystemBuiltPkgcache
-	PackagesInstallable   int `json:"packages_installable" csv:"packages_installable" query:"sp.packages_installable" gorm:"column:packages_installable"`
-	PackagesApplicable    int `json:"packages_applicable" csv:"packages_applicable" query:"sp.packages_applicable" gorm:"column:packages_applicable"`
-	InstallableRhsaCount  int `json:"installable_rhsa_count" csv:"installable_rhsa_count" query:"sp.installable_advisory_sec_count_cache" gorm:"column:installable_rhsa_count"`
-	InstallableRhbaCount  int `json:"installable_rhba_count" csv:"installable_rhba_count" query:"sp.installable_advisory_bug_count_cache" gorm:"column:installable_rhba_count"`
-	InstallableRheaCount  int `json:"installable_rhea_count" csv:"installable_rhea_count" query:"sp.installable_advisory_enh_count_cache" gorm:"column:installable_rhea_count"`
-	InstallableOtherCount int `json:"installable_other_count" csv:"installable_other_count" query:"(sp.installable_advisory_count_cache - sp.installable_advisory_sec_count_cache - sp.installable_advisory_bug_count_cache - sp.installable_advisory_enh_count_cache)" gorm:"column:installable_other_count"`
-	ApplicableRhsaCount   int `json:"applicable_rhsa_count" csv:"applicable_rhsa_count" query:"sp.applicable_advisory_sec_count_cache" gorm:"column:applicable_rhsa_count"`
-	ApplicableRhbaCount   int `json:"applicable_rhba_count" csv:"applicable_rhba_count" query:"sp.applicable_advisory_bug_count_cache" gorm:"column:applicable_rhba_count"`
-	ApplicableRheaCount   int `json:"applicable_rhea_count" csv:"applicable_rhea_count" query:"sp.applicable_advisory_enh_count_cache" gorm:"column:applicable_rhea_count"`
-	ApplicableOtherCount  int `json:"applicable_other_count" csv:"applicable_other_count" query:"(sp.applicable_advisory_count_cache - sp.installable_advisory_sec_count_cache - sp.installable_advisory_bug_count_cache - sp.installable_advisory_enh_count_cache)" gorm:"column:applicable_other_count"`
+	PackagesInstallable   int `json:"packages_installable" csv:"packages_installable" query:"spatch.packages_installable" gorm:"column:packages_installable"`
+	PackagesApplicable    int `json:"packages_applicable" csv:"packages_applicable" query:"spatch.packages_applicable" gorm:"column:packages_applicable"`
+	InstallableRhsaCount  int `json:"installable_rhsa_count" csv:"installable_rhsa_count" query:"spatch.installable_advisory_sec_count_cache" gorm:"column:installable_rhsa_count"`
+	InstallableRhbaCount  int `json:"installable_rhba_count" csv:"installable_rhba_count" query:"spatch.installable_advisory_bug_count_cache" gorm:"column:installable_rhba_count"`
+	InstallableRheaCount  int `json:"installable_rhea_count" csv:"installable_rhea_count" query:"spatch.installable_advisory_enh_count_cache" gorm:"column:installable_rhea_count"`
+	InstallableOtherCount int `json:"installable_other_count" csv:"installable_other_count" query:"(spatch.installable_advisory_count_cache - spatch.installable_advisory_sec_count_cache - spatch.installable_advisory_bug_count_cache - spatch.installable_advisory_enh_count_cache)" gorm:"column:installable_other_count"`
+	ApplicableRhsaCount   int `json:"applicable_rhsa_count" csv:"applicable_rhsa_count" query:"spatch.applicable_advisory_sec_count_cache" gorm:"column:applicable_rhsa_count"`
+	ApplicableRhbaCount   int `json:"applicable_rhba_count" csv:"applicable_rhba_count" query:"spatch.applicable_advisory_bug_count_cache" gorm:"column:applicable_rhba_count"`
+	ApplicableRheaCount   int `json:"applicable_rhea_count" csv:"applicable_rhea_count" query:"spatch.applicable_advisory_enh_count_cache" gorm:"column:applicable_rhea_count"`
+	ApplicableOtherCount  int `json:"applicable_other_count" csv:"applicable_other_count" query:"(spatch.applicable_advisory_count_cache - spatch.installable_advisory_sec_count_cache - spatch.installable_advisory_bug_count_cache - spatch.installable_advisory_enh_count_cache)" gorm:"column:applicable_other_count"`
 	BaselineIDAttr
 	TemplateAttibutes
 	SystemGroups
@@ -101,8 +101,8 @@ type SystemItemAttributes struct {
 // nolint: lll
 type SystemItemAttributesExtended struct {
 	SystemItemAttributes
-	ThirdParty        bool `json:"third_party" csv:"third_party" query:"sp.third_party" gorm:"column:third_party"`
-	PackagesUpdatable int  `json:"packages_updatable" csv:"packages_updatable" query:"sp.packages_installable" gorm:"column:packages_updatable"`
+	ThirdParty        bool `json:"third_party" csv:"third_party" query:"spatch.third_party" gorm:"column:third_party"`
+	PackagesUpdatable int  `json:"packages_updatable" csv:"packages_updatable" query:"spatch.packages_installable" gorm:"column:packages_updatable"`
 
 	OSName  string `json:"os_name" csv:"os_name" query:"si.os_name" gorm:"column:osname"`
 	OSMajor string `json:"os_major" csv:"os_major" query:"si.os_major" gorm:"column:osmajor"`
@@ -191,7 +191,7 @@ func systemsCommon(c *gin.Context) (*gorm.DB, *ListMeta, []string, error) {
 	if err != nil {
 		return nil, nil, nil, err
 	} // Error handled method itself
-	query, _ = ApplyInventoryFilter(filters, query, "sp.inventory_id")
+	query, _ = ApplyInventoryFilter(filters, query, "si.inventory_id")
 	query, meta, params, err := ListCommon(query, c, filters, SystemOpts)
 	// Error handled method itself
 	return query, meta, params, err

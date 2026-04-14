@@ -53,19 +53,19 @@ type TemplateAttibutes struct {
 }
 
 type SystemDisplayName struct {
-	DisplayName string `json:"display_name" csv:"display_name" query:"sp.display_name" gorm:"column:display_name"`
+	DisplayName string `json:"display_name" csv:"display_name" query:"si.display_name" gorm:"column:display_name"`
 }
 
 type SystemLastUpload struct {
-	LastUpload *time.Time `json:"last_upload" csv:"last_upload" query:"sp.last_upload" gorm:"column:last_upload"`
+	LastUpload *time.Time `json:"last_upload" csv:"last_upload" query:"si.last_upload" gorm:"column:last_upload"`
 }
 
 type SystemStale struct {
-	Stale bool `json:"stale" csv:"stale" query:"sp.stale" gorm:"column:stale"`
+	Stale bool `json:"stale" csv:"stale" query:"si.stale" gorm:"column:stale"`
 }
 
 type SystemIDAttribute struct {
-	ID string `json:"id" csv:"id" query:"sp.inventory_id" gorm:"column:inventory_id"`
+	ID string `json:"id" csv:"id" query:"si.inventory_id" gorm:"column:inventory_id"`
 }
 
 type SystemAdvisoryStatus struct {
@@ -73,29 +73,29 @@ type SystemAdvisoryStatus struct {
 }
 
 type SystemSatelliteManaged struct {
-	SatelliteManaged bool `json:"satellite_managed" csv:"satellite_managed" query:"sp.satellite_managed" gorm:"column:satellite_managed"`
+	SatelliteManaged bool `json:"satellite_managed" csv:"satellite_managed" query:"si.satellite_managed" gorm:"column:satellite_managed"`
 }
 
 type SystemBuiltPkgcache struct {
-	BuiltPkgcache bool `json:"built_pkgcache" csv:"built_pkgcache" query:"sp.built_pkgcache" gorm:"column:built_pkgcache"`
+	BuiltPkgcache bool `json:"built_pkgcache" csv:"built_pkgcache" query:"si.built_pkgcache" gorm:"column:built_pkgcache"`
 }
 
 type SystemArch struct {
-	Arch string `json:"arch" csv:"arch" query:"sp.arch" gorm:"column:arch"`
+	Arch string `json:"arch" csv:"arch" query:"si.arch" gorm:"column:arch"`
 }
 
 // nolint: lll
 type InstallableAdvisories struct {
-	InstallableRhsaCount  int `json:"installable_rhsa_count" csv:"installable_rhsa_count" query:"sp.installable_advisory_sec_count_cache" gorm:"column:installable_rhsa_count"`
-	InstallableRhbaCount  int `json:"installable_rhba_count" csv:"installable_rhba_count" query:"sp.installable_advisory_bug_count_cache" gorm:"column:installable_rhba_count"`
-	InstallableRheaCount  int `json:"installable_rhea_count" csv:"installable_rhea_count" query:"sp.installable_advisory_enh_count_cache" gorm:"column:installable_rhea_count"`
-	InstallableOtherCount int `json:"installable_other_count" csv:"installable_other_count" query:"(sp.installable_advisory_count_cache - sp.installable_advisory_sec_count_cache - sp.installable_advisory_bug_count_cache - sp.installable_advisory_enh_count_cache)" gorm:"column:installable_other_count"`
+	InstallableRhsaCount  int `json:"installable_rhsa_count" csv:"installable_rhsa_count" query:"spatch.installable_advisory_sec_count_cache" gorm:"column:installable_rhsa_count"`
+	InstallableRhbaCount  int `json:"installable_rhba_count" csv:"installable_rhba_count" query:"spatch.installable_advisory_bug_count_cache" gorm:"column:installable_rhba_count"`
+	InstallableRheaCount  int `json:"installable_rhea_count" csv:"installable_rhea_count" query:"spatch.installable_advisory_enh_count_cache" gorm:"column:installable_rhea_count"`
+	InstallableOtherCount int `json:"installable_other_count" csv:"installable_other_count" query:"(spatch.installable_advisory_count_cache - spatch.installable_advisory_sec_count_cache - spatch.installable_advisory_bug_count_cache - spatch.installable_advisory_enh_count_cache)" gorm:"column:installable_other_count"`
 }
 
 // nolint: lll
 type ApplicableAdvisories struct {
-	ApplicableRhsaCount  int `json:"applicable_rhsa_count" csv:"applicable_rhsa_count" query:"sp.applicable_advisory_sec_count_cache" gorm:"column:applicable_rhsa_count"`
-	ApplicableRhbaCount  int `json:"applicable_rhba_count" csv:"applicable_rhba_count" query:"sp.applicable_advisory_bug_count_cache" gorm:"column:applicable_rhba_count"`
-	ApplicableRheaCount  int `json:"applicable_rhea_count" csv:"applicable_rhea_count" query:"sp.applicable_advisory_enh_count_cache" gorm:"column:applicable_rhea_count"`
-	ApplicableOtherCount int `json:"applicable_other_count" csv:"applicable_other_count" query:"(sp.applicable_advisory_count_cache - sp.applicable_advisory_sec_count_cache - sp.applicable_advisory_bug_count_cache - sp.applicable_advisory_enh_count_cache)" gorm:"column:applicable_other_count"`
+	ApplicableRhsaCount  int `json:"applicable_rhsa_count" csv:"applicable_rhsa_count" query:"spatch.applicable_advisory_sec_count_cache" gorm:"column:applicable_rhsa_count"`
+	ApplicableRhbaCount  int `json:"applicable_rhba_count" csv:"applicable_rhba_count" query:"spatch.applicable_advisory_bug_count_cache" gorm:"column:applicable_rhba_count"`
+	ApplicableRheaCount  int `json:"applicable_rhea_count" csv:"applicable_rhea_count" query:"spatch.applicable_advisory_enh_count_cache" gorm:"column:applicable_rhea_count"`
+	ApplicableOtherCount int `json:"applicable_other_count" csv:"applicable_other_count" query:"(spatch.applicable_advisory_count_cache - spatch.applicable_advisory_sec_count_cache - spatch.applicable_advisory_bug_count_cache - spatch.applicable_advisory_enh_count_cache)" gorm:"column:applicable_other_count"`
 }

@@ -218,11 +218,11 @@ func buildQueryAdvisories(db *gorm.DB, account int) *gorm.DB {
 
 func buildAdvisoryAccountDataQuery(db *gorm.DB, account int, groups map[string]string) *gorm.DB {
 	query := database.SystemAdvisories(db, account, groups).
-		Select(`sa.advisory_id, sp.rh_account_id as rh_account_id,
-		        count(sp.*) filter (where sa.status_id = 0) as systems_installable,
-		        count(sp.*) as systems_applicable`).
-		Where("sp.stale = false").
-		Group("sp.rh_account_id, sa.advisory_id")
+		Select(`sa.advisory_id, si.rh_account_id as rh_account_id,
+		        count(si.*) filter (where sa.status_id = 0) as systems_installable,
+		        count(si.*) as systems_applicable`).
+		Where("si.stale = false").
+		Group("si.rh_account_id, sa.advisory_id")
 
 	return query
 }
@@ -230,7 +230,7 @@ func buildAdvisoryAccountDataQuery(db *gorm.DB, account int, groups map[string]s
 func buildQueryAdvisoriesTagged(db *gorm.DB, filters map[string]FilterData, account int, groups map[string]string,
 ) *gorm.DB {
 	subq := buildAdvisoryAccountDataQuery(db, account, groups)
-	subq, _ = ApplyInventoryFilter(filters, subq, "sp.inventory_id")
+	subq, _ = ApplyInventoryFilter(filters, subq, "si.inventory_id")
 
 	query := database.AdvisoryMetadata(db).
 		Select(AdvisoriesSelect).

@@ -17,11 +17,15 @@ func TestSystemPackagesExportHandlerJSON(t *testing.T) {
 	var output []SystemPackageInline
 	CheckResponse(t, w, http.StatusOK, &output)
 	assert.Equal(t, 4, len(output))
-	assert.Equal(t, output[0].Name, "kernel")
-	assert.Equal(t, output[0].EVRA, "5.6.13-200.fc31.x86_64")
-	assert.Equal(t, output[0].LatestInstallable, "5.6.13-200.fc31.x86_64")
-	assert.Equal(t, output[0].LatestApplicable, "5.6.13-200.fc31.x86_64")
-	assert.Equal(t, output[0].Summary, "The Linux kernel")
+	byName := make(map[string]SystemPackageInline, len(output))
+	for _, p := range output {
+		byName[p.Name] = p
+	}
+	kernel := byName["kernel"]
+	assert.Equal(t, "5.6.13-200.fc31.x86_64", kernel.EVRA)
+	assert.Equal(t, "5.6.13-200.fc31.x86_64", kernel.LatestInstallable)
+	assert.Equal(t, "5.6.13-200.fc31.x86_64", kernel.LatestApplicable)
+	assert.Equal(t, "The Linux kernel", kernel.Summary)
 }
 
 func TestSystemPackagesExportHandlerCSV(t *testing.T) {
@@ -36,10 +40,17 @@ func TestSystemPackagesExportHandlerCSV(t *testing.T) {
 	assert.Equal(t, 6, len(lines))
 	assert.Equal(t, "name,evra,summary,description,updatable,update_status,latest_installable,latest_applicable", lines[0])
 
-	assert.Equal(t, "kernel,5.6.13-200.fc31.x86_64,The Linux kernel,The kernel meta package,false,"+
-		"None,5.6.13-200.fc31.x86_64,5.6.13-200.fc31.x86_64", lines[1])
+	// Export applies the same default sort as the list API (package name ascending).
+	// nolint:lll
+	assert.Equal(t, "bash,4.4.19-8.el8_0.x86_64,The GNU Bourne Again shell,The GNU Bourne Again shell (Bash) is a shell...,false,"+
+		"None,4.4.19-8.el8_0.x86_64,4.4.19-8.el8_0.x86_64", lines[1])
+	// nolint:lll
+	assert.Equal(t, "curl,7.61.1-8.el8.x86_64,A utility for getting files from remote servers...,curl is a command line tool for transferring data...,false,"+
+		"None,7.61.1-8.el8.x86_64,7.61.1-8.el8.x86_64", lines[2])
 	assert.Equal(t, "firefox,76.0.1-1.fc31.x86_64,Mozilla Firefox Web browser,Mozilla Firefox is an "+
-		"open-source web browser...,true,Installable,76.0.1-2.fc31.x86_64,77.0.1-1.fc31.x86_64", lines[2])
+		"open-source web browser...,true,Installable,76.0.1-2.fc31.x86_64,77.0.1-1.fc31.x86_64", lines[3])
+	assert.Equal(t, "kernel,5.6.13-200.fc31.x86_64,The Linux kernel,The kernel meta package,false,"+
+		"None,5.6.13-200.fc31.x86_64,5.6.13-200.fc31.x86_64", lines[4])
 }
 
 func TestSystemPackagesExportUnknown(t *testing.T) {

@@ -97,8 +97,8 @@ func SystemTagListHandler(c *gin.Context) {
 		total = tagsWithCount[0].Total
 	}
 	data := make([]SystemTagItem, len(tagsWithCount))
-	for i, sp := range tagsWithCount {
-		data[i] = sp.SystemTagItem
+	for i, s := range tagsWithCount {
+		data[i] = s.SystemTagItem
 	}
 	meta, links, err := UpdateMetaLinks(c, meta, total, nil, params...)
 	if err != nil {

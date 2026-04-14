@@ -66,11 +66,11 @@ func packagesQuery(db *gorm.DB, filters map[string]FilterData, acc int, groups m
 	}
 	middlewares.PackageAccountDataCnt.WithLabelValues("miss").Inc()
 	systemsWithPkgsInstalledQ := database.Systems(db, acc, groups).
-		Select("sp.id").
-		Where("sp.stale = false AND sp.packages_installed > 0")
+		Select("si.id").
+		Where("si.stale = false AND spatch.packages_installed > 0")
 
 	// We need to apply tag filtering on subquery
-	systemsWithPkgsInstalledQ, _ = ApplyInventoryFilter(filters, systemsWithPkgsInstalledQ, "sp.inventory_id")
+	systemsWithPkgsInstalledQ, _ = ApplyInventoryFilter(filters, systemsWithPkgsInstalledQ, "si.inventory_id")
 	subQ := database.SystemPackagesShort(db, acc).
 		Select(queryItemSelect).
 		Where("spkg.system_id IN (?)", systemsWithPkgsInstalledQ).

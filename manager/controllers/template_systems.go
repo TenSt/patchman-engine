@@ -18,8 +18,8 @@ var TemplateSystemOpts = ListOpts{
 	Fields:         templateSystemFields,
 	DefaultFilters: map[string]FilterData{},
 	DefaultSort:    "-display_name",
-	StableSort:     "sp.id",
-	SearchFields:   []string{"sp.display_name"},
+	StableSort:     "si.id",
+	SearchFields:   []string{"si.display_name"},
 }
 
 type TemplateSystemsDBLookup struct {
@@ -86,14 +86,14 @@ func templateSystemsQuery(c *gin.Context, account int, groups map[string]string)
 	}
 
 	query := database.Systems(db, account, groups).
-		Where("sp.template_id = ?", template.ID).
+		Where("spatch.template_id = ?", template.ID).
 		Select(templateSystemSelect)
 
 	filters, err := ParseAllFilters(c, TemplateSystemOpts)
 	if err != nil {
 		return nil, nil, err
 	} // Error handled in method itself
-	query, _ = ApplyInventoryFilter(filters, query, "sp.inventory_id")
+	query, _ = ApplyInventoryFilter(filters, query, "si.inventory_id")
 	return query, filters, nil
 }
 

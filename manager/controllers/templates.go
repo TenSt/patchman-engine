@@ -125,14 +125,14 @@ func TemplatesListHandler(c *gin.Context) {
 
 func templatesQuery(db *gorm.DB, filters map[string]FilterData, account int, groups map[string]string) *gorm.DB {
 	subq := database.Systems(db, account, groups).
-		Select("sp.template_id, count(*) as systems").
-		Group("sp.template_id")
+		Select("spatch.template_id, count(*) as systems").
+		Group("spatch.template_id")
 
-	subq, _ = ApplyInventoryFilter(filters, subq, "sp.inventory_id")
+	subq, _ = ApplyInventoryFilter(filters, subq, "si.inventory_id")
 
 	query := db.Table("template as tp").
 		Select(TemplateSelect).
-		Joins("LEFT JOIN (?) sp ON sp.template_id = tp.id", subq).
+		Joins("LEFT JOIN (?) spatch ON spatch.template_id = tp.id", subq).
 		Where("tp.rh_account_id = ?", account)
 
 	return query

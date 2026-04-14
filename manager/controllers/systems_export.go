@@ -63,11 +63,11 @@ func SystemsExportHandler(c *gin.Context) {
 	if err != nil {
 		return
 	} // Error handled in method itself
-	query, _ = ApplyInventoryFilter(filters, query, "sp.inventory_id")
+	query, _ = ApplyInventoryFilter(filters, query, "si.inventory_id")
 
 	var systems []SystemDBLookupExtended
 
-	query = query.Order("sp.id")
+	query = query.Order("si.id")
 	query, err = ExportListCommon(query, c, SystemOpts)
 	if err != nil {
 		return
