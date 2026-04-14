@@ -218,7 +218,7 @@ func evaluateInDatabase(ctx context.Context, event *mqueue.PlatformEvent, invent
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "repo analysis failed")
 	}
-	system.ThirdParty = thirdParty // to set "system_platform.third_party" column
+	system.ThirdParty = thirdParty // persisted to system_patch.third_party in updateSystemPlatform
 
 	updatesData, err := getUpdatesData(ctx, system)
 	if err != nil {
@@ -551,6 +551,24 @@ func incrementAdvisoryTypeCounts(advisory models.AdvisoryMetadata, enhCount, bug
 	}
 }
 
+// systemPatchEvaluatorUpdateColumns lists DB columns on system_patch that evaluate may update.
+// Keep in sync with database_admin/schema/create_schema.sql (system_patch).
+var systemPatchEvaluatorUpdateColumns = map[string]struct{}{
+	"last_evaluation":                      {},
+	"installable_advisory_count_cache":     {},
+	"installable_advisory_enh_count_cache": {},
+	"installable_advisory_bug_count_cache": {},
+	"installable_advisory_sec_count_cache": {},
+	"applicable_advisory_count_cache":      {},
+	"applicable_advisory_enh_count_cache":  {},
+	"applicable_advisory_bug_count_cache":  {},
+	"applicable_advisory_sec_count_cache":  {},
+	"packages_installed":                   {},
+	"packages_installable":                 {},
+	"packages_applicable":                  {},
+	"third_party":                          {},
+}
+
 // nolint: funlen
 func updateSystemPlatform(tx *gorm.DB, system *models.SystemPlatform,
 	advisories SystemAdvisoryMap, installed, installable, applicable int) error {
@@ -563,21 +581,19 @@ func updateSystemPlatform(tx *gorm.DB, system *models.SystemPlatform,
 		defer utils.ObserveHoursSince(*system.LastEvaluation, twoEvaluationsInterval)
 	}
 
-	data := make(map[string]interface{}, 8)
-	data["last_evaluation"] = time.Now()
+	lastEval := time.Now()
+	data := make(map[string]interface{}, 13)
+	data["last_evaluation"] = lastEval
+
+	var (
+		installableCount, installableEnhCount, installableBugCount, installableSecCount int
+		applicableCount, applicableEnhCount, applicableBugCount, applicableSecCount     int
+	)
 
 	if enableAdvisoryAnalysis {
 		if advisories == nil {
 			return errors.New("Invalid args")
 		}
-		installableCount := 0
-		installableEnhCount := 0
-		installableBugCount := 0
-		installableSecCount := 0
-		applicableCount := 0
-		applicableEnhCount := 0
-		applicableBugCount := 0
-		applicableSecCount := 0
 		for _, sa := range advisories {
 			if sa.StatusID == INSTALLABLE {
 				incrementAdvisoryTypeCounts(sa.Advisory, &installableEnhCount, &installableBugCount, &installableSecCount)
@@ -608,14 +624,45 @@ func updateSystemPlatform(tx *gorm.DB, system *models.SystemPlatform,
 		data["third_party"] = system.ThirdParty
 	}
 
-	err := tx.Model(system).Updates(data).Error
+	for k := range data {
+		if _, ok := systemPatchEvaluatorUpdateColumns[k]; !ok {
+			return errors.Errorf("updateSystemPlatform: unknown system_patch column %q", k)
+		}
+	}
+
+	err := tx.Model(&models.SystemPatch{}).
+		Where("rh_account_id = ? AND system_id = ?", system.RhAccountID, system.ID).
+		Updates(data).Error
 
 	now := time.Now()
 	if system.LastUpload != nil && system.LastUpload.Sub(now) > time.Hour {
 		// log long evaluating systems
 		utils.LogWarn("id", system.InventoryID, "lastUpload", *system.LastUpload, "now", now, "uploadEvaluationDelay")
 	}
-	return err
+	if err != nil {
+		return err
+	}
+
+	// GORM map Updates does not refresh *system; keep in-memory patch-backed fields consistent
+	// for publishInventoryViewsEvent / publishNewAdvisoriesNotification in the same transaction.
+	le := lastEval
+	system.LastEvaluation = &le
+	if enableAdvisoryAnalysis {
+		system.InstallableAdvisoryCountCache = installableCount
+		system.InstallableAdvisoryEnhCountCache = installableEnhCount
+		system.InstallableAdvisoryBugCountCache = installableBugCount
+		system.InstallableAdvisorySecCountCache = installableSecCount
+		system.ApplicableAdvisoryCountCache = applicableCount
+		system.ApplicableAdvisoryEnhCountCache = applicableEnhCount
+		system.ApplicableAdvisoryBugCountCache = applicableBugCount
+		system.ApplicableAdvisorySecCountCache = applicableSecCount
+	}
+	if enablePackageAnalysis {
+		system.PackagesInstalled = installed
+		system.PackagesInstallable = installable
+		system.PackagesApplicable = applicable
+	}
+	return nil
 }
 
 func callVMaas(ctx context.Context, request *vmaas.UpdatesV3Request) (*vmaas.UpdatesV3Response, error) {
@@ -659,8 +706,8 @@ func loadSystemData(accountID int, inventoryID string) (*models.SystemPlatform, 
 
 func validSystem(accountID int, systemID int64) bool {
 	var foundID int64
-	err := database.DB.Model(models.SystemPlatform{}).
-		Where("rh_account_id = ? and id = ?", accountID, systemID).
+	err := database.DB.Model(&models.SystemInventory{}).
+		Where("rh_account_id = ? AND id = ?", accountID, systemID).
 		Select("id").
 		Clauses(clause.Locking{Strength: "SHARE", Table: clause.Table{Name: clause.CurrentTable}}).
 		First(&foundID).Error
