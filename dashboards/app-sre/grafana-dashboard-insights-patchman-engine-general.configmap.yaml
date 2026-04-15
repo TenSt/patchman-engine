@@ -6467,12 +6467,23 @@ data:
                         "datasource": {
                             "uid": "$datasource"
                         },
-                        "expr": "avg(sum(patchman_engine_vmaas_sync_database_size_bytes{table=~\"public.system_platform_.*\"}) by (pod))",
+                        "expr": "avg(sum(patchman_engine_vmaas_sync_database_size_bytes{table=~\"public.system_inventory_.*\"}) by (pod))",
                         "format": "time_series",
                         "interval": "",
                         "intervalFactor": 1,
-                        "legendFormat": "system_platform_sum",
+                        "legendFormat": "system_inventory_sum",
                         "refId": "D"
+                    },
+                    {
+                        "datasource": {
+                            "uid": "$datasource"
+                        },
+                        "expr": "avg(sum(patchman_engine_vmaas_sync_database_size_bytes{table=~\"public.system_patch_.*\"}) by (pod))",
+                        "format": "time_series",
+                        "interval": "",
+                        "intervalFactor": 1,
+                        "legendFormat": "system_patch_sum",
+                        "refId": "P"
                     },
                     {
                         "datasource": {
