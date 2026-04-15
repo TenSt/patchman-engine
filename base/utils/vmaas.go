@@ -3,6 +3,7 @@ package utils
 import (
 	"app/base/models"
 	"app/base/vmaas"
+	"fmt"
 
 	"github.com/bytedance/sonic"
 )
@@ -122,8 +123,14 @@ func RemoveNonLatestPackages(updates *vmaas.UpdatesV3Response) {
 	updates.UpdateList = &updateList
 }
 
-func ParseVmaasJSON(system *models.SystemPlatform) (vmaas.UpdatesV3Request, error) {
+func ParseVmaasJSON(inv *models.SystemInventory) (vmaas.UpdatesV3Request, error) {
 	var updatesReq vmaas.UpdatesV3Request
-	err := sonic.Unmarshal([]byte(*system.VmaasJSON), &updatesReq)
+	if inv == nil || inv.VmaasJSON == nil {
+		return updatesReq, fmt.Errorf("system inventory or vmaas json is nil")
+	}
+	err := sonic.Unmarshal([]byte(*inv.VmaasJSON), &updatesReq)
+	if err != nil {
+		LogWarn("inventoryID", inv.GetInventoryID(), "err", err.Error(), "failed to parse vmaas json")
+	}
 	return updatesReq, err
 }

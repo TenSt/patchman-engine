@@ -390,7 +390,11 @@ func tryGetVmaasRequest(system *models.SystemPlatform) (*vmaas.UpdatesV3Request,
 		return nil, nil
 	}
 
-	updatesReq, err := parseVmaasJSON(system)
+	inv := &models.SystemInventory{
+		InventoryID: system.InventoryID,
+		VmaasJSON:   system.VmaasJSON,
+	}
+	updatesReq, err := parseVmaasJSON(inv)
 	if err != nil {
 		evaluationCnt.WithLabelValues("error-parse-vmaas-json").Inc()
 		return nil, errors.Wrap(err, "Unable to parse system vmaas json")
@@ -717,10 +721,10 @@ func validSystem(accountID int, systemID int64) bool {
 	return systemID == foundID
 }
 
-func parseVmaasJSON(system *models.SystemPlatform) (vmaas.UpdatesV3Request, error) {
+func parseVmaasJSON(inv *models.SystemInventory) (vmaas.UpdatesV3Request, error) {
 	tStart := time.Now()
 	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("parse-vmaas-json"))
-	return utils.ParseVmaasJSON(system)
+	return utils.ParseVmaasJSON(inv)
 }
 
 func invalidateCaches(orgID string) error {
