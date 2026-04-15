@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-func lazySaveAndLoadPackages(system *models.SystemPlatform, vmaasData *vmaas.UpdatesV3Response) (
+func lazySaveAndLoadPackages(system *models.SystemPlatformV2, vmaasData *vmaas.UpdatesV3Response) (
 	map[string]namedPackage, int, int, int, error) {
 	if !enablePackageAnalysis {
 		utils.LogInfo("package analysis disabled, skipping lazy saving and loading")
@@ -127,11 +127,11 @@ func updatePackageNameDB(missing *models.PackageName) error {
 }
 
 // LoadPackages finds relevant package data based on vmaas results.
-func loadPackages(system *models.SystemPlatform, vmaasData *vmaas.UpdatesV3Response) (
+func loadPackages(system *models.SystemPlatformV2, vmaasData *vmaas.UpdatesV3Response) (
 	map[string]namedPackage, int, int, int, error) {
 	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("packages-load"))
 
-	packages, installed, installable, applicable := packagesFromUpdateList(system.InventoryID, vmaasData)
+	packages, installed, installable, applicable := packagesFromUpdateList(system.GetInventoryID(), vmaasData)
 	err := loadSystemNEVRAsFromDB(system, packages)
 	if err != nil {
 		return nil, 0, 0, 0, errors.Wrap(err, "loading packages")
@@ -179,10 +179,10 @@ func packagesFromUpdateList(inventoryID string, vmaasData *vmaas.UpdatesV3Respon
 	return packages, installed, installable, applicable
 }
 
-func loadSystemNEVRAsFromDB(system *models.SystemPlatform, packages map[string]namedPackage) error {
+func loadSystemNEVRAsFromDB(system *models.SystemPlatformV2, packages map[string]namedPackage) error {
 	rows, err := database.DB.Table("system_package2 sp2").
 		Select("sp2.name_id, sp2.package_id, sp2.installable_id, sp2.applicable_id").
-		Where("rh_account_id = ? AND system_id = ?", system.RhAccountID, system.ID).
+		Where("rh_account_id = ? AND system_id = ?", system.Inventory.RhAccountID, system.InternalSystemID()).
 		Rows()
 	if err != nil {
 		return err
@@ -219,7 +219,7 @@ func loadSystemNEVRAsFromDB(system *models.SystemPlatform, packages map[string]n
 		}
 	}
 
-	utils.LogInfo("inventoryID", system.InventoryID, "already stored", numStored)
+	utils.LogInfo("inventoryID", system.GetInventoryID(), "already stored", numStored)
 	return err
 }
 
@@ -246,10 +246,10 @@ func latestPkgsChanged(current, stored namedPackage) bool {
 	return !(installableEqual && applicableEqual)
 }
 
-func createSystemPackage(system *models.SystemPlatform, pkg namedPackage) models.SystemPackage {
+func createSystemPackage(system *models.SystemPlatformV2, pkg namedPackage) models.SystemPackage {
 	systemPackage := models.SystemPackage{
-		RhAccountID:   system.RhAccountID,
-		SystemID:      system.ID,
+		RhAccountID:   system.Inventory.RhAccountID,
+		SystemID:      system.InternalSystemID(),
 		PackageID:     pkg.PackageID,
 		NameID:        pkg.NameID,
 		InstallableID: pkg.InstallableID,
@@ -258,7 +258,7 @@ func createSystemPackage(system *models.SystemPlatform, pkg namedPackage) models
 	return systemPackage
 }
 
-func updateSystemPackages(tx *gorm.DB, system *models.SystemPlatform,
+func updateSystemPackages(tx *gorm.DB, system *models.SystemPlatformV2,
 	packagesByNEVRA map[string]namedPackage) error {
 	if !enablePackageAnalysis {
 		utils.LogInfo("package analysis disabled, skipping storing")
@@ -339,9 +339,9 @@ func latestPackagesFromUpdatesList(updatePkgData []vmaas.UpdatesV3ResponseAvaila
 	return installableID, applicableID
 }
 
-func deleteOldSystemPackages(tx *gorm.DB, system *models.SystemPlatform, pkgIDs []int64) error {
-	err := tx.Where("rh_account_id = ? ", system.RhAccountID).
-		Where("system_id = ?", system.ID).
+func deleteOldSystemPackages(tx *gorm.DB, system *models.SystemPlatformV2, pkgIDs []int64) error {
+	err := tx.Where("rh_account_id = ? ", system.Inventory.RhAccountID).
+		Where("system_id = ?", system.InternalSystemID()).
 		Where("package_id in (?)", pkgIDs).
 		Delete(&models.SystemPackage{}).Error
 

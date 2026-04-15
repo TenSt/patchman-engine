@@ -53,54 +53,6 @@ func (TemplateBase) TableName() string {
 	return "template"
 }
 
-type SystemPlatform struct {
-	ID                               int64  `gorm:"primaryKey"`
-	InventoryID                      string `gorm:"unique"`
-	RhAccountID                      int    `gorm:"primaryKey"`
-	VmaasJSON                        *string
-	JSONChecksum                     *string
-	LastUpdated                      *time.Time `gorm:"default:null"`
-	UnchangedSince                   *time.Time `gorm:"default:null"`
-	LastEvaluation                   *time.Time `gorm:"default:null"`
-	InstallableAdvisoryCountCache    int
-	InstallableAdvisoryEnhCountCache int
-	InstallableAdvisoryBugCountCache int
-	InstallableAdvisorySecCountCache int
-	ApplicableAdvisoryCountCache     int
-	ApplicableAdvisoryEnhCountCache  int
-	ApplicableAdvisoryBugCountCache  int
-	ApplicableAdvisorySecCountCache  int
-	LastUpload                       *time.Time `gorm:"default:null"`
-	StaleTimestamp                   *time.Time
-	StaleWarningTimestamp            *time.Time
-	CulledTimestamp                  *time.Time
-	Stale                            bool
-	DisplayName                      string
-	PackagesInstalled                int
-	PackagesInstallable              int
-	PackagesApplicable               int
-	ThirdParty                       bool
-	ReporterID                       *int
-	TemplateID                       *int64  `gorm:"column:template_id"`
-	YumUpdates                       []byte  `gorm:"column:yum_updates"`
-	YumChecksum                      *string `gorm:"column:yum_checksum"`
-	SatelliteManaged                 bool    `gorm:"column:satellite_managed"`
-	BuiltPkgcache                    bool    `gorm:"column:built_pkgcache"`
-	Arch                             *string
-	Bootc                            bool
-}
-
-func (SystemPlatform) TableName() string {
-	return "system_platform"
-}
-
-func (s *SystemPlatform) GetInventoryID() string {
-	if s == nil {
-		return ""
-	}
-	return s.InventoryID
-}
-
 type SystemInventory struct {
 	ID                               int64  `gorm:"primaryKey"`
 	InventoryID                      string `gorm:"unique"`

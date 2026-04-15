@@ -149,22 +149,24 @@ func CheckPackagesNamesInDB(t *testing.T, filter string, packageNames ...string)
 func CheckSystemJustEvaluated(t *testing.T, inventoryID string, nIAll, nIEnh, nIBug, nISec,
 	nAAll, nAEnh, nABug, nASec, nInstall, nInstallable, nApplicable int,
 	thirdParty bool) {
-	var system models.SystemPlatform
-	assert.Nil(t, DB.Where("inventory_id = ?::uuid", inventoryID).First(&system).Error)
-	assert.NotNil(t, system.LastEvaluation)
-	assert.True(t, system.LastEvaluation.After(time.Now().Add(-time.Second)))
-	assert.Equal(t, nIAll, system.InstallableAdvisoryCountCache)
-	assert.Equal(t, nIEnh, system.InstallableAdvisoryEnhCountCache)
-	assert.Equal(t, nIBug, system.InstallableAdvisoryBugCountCache)
-	assert.Equal(t, nISec, system.InstallableAdvisorySecCountCache)
-	assert.Equal(t, nAAll, system.ApplicableAdvisoryCountCache)
-	assert.Equal(t, nAEnh, system.ApplicableAdvisoryEnhCountCache)
-	assert.Equal(t, nABug, system.ApplicableAdvisoryBugCountCache)
-	assert.Equal(t, nASec, system.ApplicableAdvisorySecCountCache)
-	assert.Equal(t, nInstall, system.PackagesInstalled)
-	assert.Equal(t, nInstallable, system.PackagesInstallable)
-	assert.Equal(t, nApplicable, system.PackagesApplicable)
-	assert.Equal(t, thirdParty, system.ThirdParty)
+	var inv models.SystemInventory
+	assert.Nil(t, DB.Where("inventory_id = ?::uuid", inventoryID).First(&inv).Error)
+	var patch models.SystemPatch
+	assert.Nil(t, DB.Where("rh_account_id = ? AND system_id = ?", inv.RhAccountID, inv.ID).First(&patch).Error)
+	assert.NotNil(t, patch.LastEvaluation)
+	assert.True(t, patch.LastEvaluation.After(time.Now().Add(-time.Second)))
+	assert.Equal(t, nIAll, patch.InstallableAdvisoryCountCache)
+	assert.Equal(t, nIEnh, patch.InstallableAdvisoryEnhCountCache)
+	assert.Equal(t, nIBug, patch.InstallableAdvisoryBugCountCache)
+	assert.Equal(t, nISec, patch.InstallableAdvisorySecCountCache)
+	assert.Equal(t, nAAll, patch.ApplicableAdvisoryCountCache)
+	assert.Equal(t, nAEnh, patch.ApplicableAdvisoryEnhCountCache)
+	assert.Equal(t, nABug, patch.ApplicableAdvisoryBugCountCache)
+	assert.Equal(t, nASec, patch.ApplicableAdvisorySecCountCache)
+	assert.Equal(t, nInstall, patch.PackagesInstalled)
+	assert.Equal(t, nInstallable, patch.PackagesInstallable)
+	assert.Equal(t, nApplicable, patch.PackagesApplicable)
+	assert.Equal(t, thirdParty, patch.ThirdParty)
 }
 
 func CheckAdvisoriesAccountData(t *testing.T, rhAccountID int, advisoryIDs []int64, systemsInstallable int) {
@@ -346,8 +348,8 @@ func DeleteNewlyAddedAdvisories(t *testing.T) {
 	assert.Equal(t, int64(0), cnt)
 }
 
-func GetAllSystems(t *testing.T) (systems []*models.SystemPlatform) {
-	assert.Nil(t, DB.Model(&models.SystemPlatform{}).Order("rh_account_id").Scan(&systems).Error)
+func GetAllSystems(t *testing.T) (systems []*models.SystemInventory) {
+	assert.Nil(t, DB.Model(&models.SystemInventory{}).Order("rh_account_id").Scan(&systems).Error)
 	return systems
 }
 
@@ -386,10 +388,19 @@ func CreateTemplate(t *testing.T, account int, uuid string, inventoryIDs []strin
 	err := tx.Create(template).Error
 	assert.Nil(t, err)
 
-	err = tx.Model(models.SystemPlatform{}).
-		Where("rh_account_id = ? AND inventory_id IN (?::uuid)", account, inventoryIDs).
-		Update("template_id", template.ID).Error
-	assert.Nil(t, err)
+	for _, invID := range inventoryIDs {
+		err = tx.Exec(`
+		UPDATE system_patch SET template_id = ? 
+		WHERE rh_account_id = ? 
+		AND system_id = (
+			SELECT id 
+			FROM system_inventory 
+			WHERE rh_account_id = ? 
+			AND inventory_id = ?::uuid
+		)`,
+			template.ID, account, account, invID).Error
+		assert.Nil(t, err)
+	}
 	err = tx.Commit().Error
 	assert.Nil(t, err)
 }
@@ -398,9 +409,9 @@ func DeleteTemplate(t *testing.T, account int, templateUUID string) {
 	tx := DB.Begin()
 	defer tx.Rollback()
 
-	err := tx.Model(models.SystemPlatform{}).
+	err := tx.Model(&models.SystemPatch{}).
 		Where("rh_account_id = ? AND template_id = (SELECT id FROM template WHERE uuid = ?::uuid)", account, templateUUID).
-		Update("template_id", nil).Error
+		Updates(map[string]interface{}{"template_id": nil}).Error
 
 	assert.Nil(t, err)
 

@@ -70,7 +70,7 @@ func getReportedPackageUpdates(vmaasData *vmaas.UpdatesV3Response) map[string]bo
 	return packages
 }
 
-func publishRemediationsState(system *models.SystemPlatform, response *vmaas.UpdatesV3Response) error {
+func publishRemediationsState(system *models.SystemPlatformV2, response *vmaas.UpdatesV3Response) error {
 	tStart := time.Now()
 	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("remediations-publish"))
 
@@ -86,8 +86,8 @@ func publishRemediationsState(system *models.SystemPlatform, response *vmaas.Upd
 		return nil
 	}
 
-	state := createRemediationsStateMsg(system.InventoryID, response)
-	msg, err := mqueue.MessageFromJSON(system.InventoryID, state, nil)
+	state := createRemediationsStateMsg(system.GetInventoryID(), response)
+	msg, err := mqueue.MessageFromJSON(system.GetInventoryID(), state, nil)
 	if err != nil {
 		return errors.Wrap(err, "formatting message")
 	}

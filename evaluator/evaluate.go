@@ -204,7 +204,7 @@ func runEvaluate(
 }
 
 func evaluateInDatabase(ctx context.Context, event *mqueue.PlatformEvent, inventoryID string) (
-	*models.SystemPlatform, *vmaas.UpdatesV3Response, error) {
+	*models.SystemPlatformV2, *vmaas.UpdatesV3Response, error) {
 	system, err := tryGetSystem(event.AccountID, inventoryID, event.Timestamp)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "unable to get system")
@@ -218,7 +218,7 @@ func evaluateInDatabase(ctx context.Context, event *mqueue.PlatformEvent, invent
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "repo analysis failed")
 	}
-	system.ThirdParty = thirdParty // persisted to system_patch.third_party in updateSystemPlatform
+	system.Patch.ThirdParty = thirdParty // persisted to system_patch.third_party in updateSystemPlatform
 
 	updatesData, err := getUpdatesData(ctx, system)
 	if err != nil {
@@ -237,20 +237,20 @@ func evaluateInDatabase(ctx context.Context, event *mqueue.PlatformEvent, invent
 	return system, vmaasData, nil
 }
 
-func tryGetYumUpdates(system *models.SystemPlatform) (*vmaas.UpdatesV3Response, error) {
-	if system.YumUpdates == nil {
+func tryGetYumUpdates(system *models.SystemPlatformV2) (*vmaas.UpdatesV3Response, error) {
+	if system == nil || len(system.Inventory.YumUpdates) == 0 {
 		return nil, nil
 	}
 
 	var resp vmaas.UpdatesV3Response
-	err := sonic.Unmarshal(system.YumUpdates, &resp)
+	err := sonic.Unmarshal(system.Inventory.YumUpdates, &resp)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to unmarshall yum updates")
 	}
 	updatesMap := resp.GetUpdateList()
 	if len(updatesMap) == 0 {
 		// TODO: do we need evaluationCnt.WithLabelValues("error-no-yum-packages").Inc()?
-		utils.LogWarn("inventoryID", system.GetInventoryID(), "No yum_updates")
+		utils.LogWarn("inventoryID", system.Inventory.InventoryID, "No yum_updates")
 		return nil, nil
 	}
 
@@ -281,7 +281,7 @@ func tryGetYumUpdates(system *models.SystemPlatform) (*vmaas.UpdatesV3Response, 
 }
 
 func evaluateWithVmaas(updatesData *vmaas.UpdatesV3Response,
-	system *models.SystemPlatform, event *mqueue.PlatformEvent) (*vmaas.UpdatesV3Response, error) {
+	system *models.SystemPlatformV2, event *mqueue.PlatformEvent) (*vmaas.UpdatesV3Response, error) {
 	tStart := time.Now()
 	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("evaluate-with-vmaas-full"))
 
@@ -292,7 +292,7 @@ func evaluateWithVmaas(updatesData *vmaas.UpdatesV3Response,
 	return updatesData, nil
 }
 
-func getUpdatesData(ctx context.Context, system *models.SystemPlatform) (*vmaas.UpdatesV3Response, error) {
+func getUpdatesData(ctx context.Context, system *models.SystemPlatformV2) (*vmaas.UpdatesV3Response, error) {
 	tStart := time.Now()
 	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("get-updates-data"))
 
@@ -322,7 +322,7 @@ func getUpdatesData(ctx context.Context, system *models.SystemPlatform) (*vmaas.
 		utils.LogWarn("Vmaas response error, continuing with yum updates only", vmaasErr.Error())
 	}
 
-	if system.SatelliteManaged || system.TemplateID != nil {
+	if system.Inventory.SatelliteManaged || system.Patch.TemplateID != nil {
 		// satellite managed systems and systems using template has vmaas updates APPLICABLE instead of INSTALLABLE
 		mergedUpdateList := vmaasData.GetUpdateList()
 		for nevra := range mergedUpdateList {
@@ -334,13 +334,13 @@ func getUpdatesData(ctx context.Context, system *models.SystemPlatform) (*vmaas.
 	return merged, nil
 }
 
-func getVmaasUpdates(ctx context.Context, system *models.SystemPlatform) (*vmaas.UpdatesV3Response, error) {
+func getVmaasUpdates(ctx context.Context, system *models.SystemPlatformV2) (*vmaas.UpdatesV3Response, error) {
 	tStart := time.Now()
 	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("vmaas-updates-prepare"))
 
 	var vmaasDataCopy vmaas.UpdatesV3Response
 	// first check if we have data in cache
-	vmaasData, ok := memoryVmaasCache.Get(system.JSONChecksum)
+	vmaasData, ok := memoryVmaasCache.Get(system.Inventory.JSONChecksum)
 	if ok {
 		// return copy of vmaasData to avoid modification of cached data e.g. by templates
 		err := copier.CopyWithOption(&vmaasDataCopy, vmaasData, copier.Option{DeepCopy: true})
@@ -359,8 +359,8 @@ func getVmaasUpdates(ctx context.Context, system *models.SystemPlatform) (*vmaas
 		return nil, nil
 	}
 
-	updatesReq.ThirdParty = utils.PtrBool(system.ThirdParty) // enable "third_party" updates in VMaaS if needed
-	useOptimisticUpdates := system.ThirdParty || vmaasCallUseOptimisticUpdates
+	updatesReq.ThirdParty = utils.PtrBool(system.Patch.ThirdParty) // enable "third_party" updates in VMaaS if needed
+	useOptimisticUpdates := system.Patch.ThirdParty || vmaasCallUseOptimisticUpdates
 	updatesReq.OptimisticUpdates = utils.PtrBool(useOptimisticUpdates)
 	updatesReq.EpochRequired = utils.PtrBool(true)
 
@@ -376,23 +376,27 @@ func getVmaasUpdates(ctx context.Context, system *models.SystemPlatform) (*vmaas
 		if err != nil {
 			return nil, err
 		}
-		memoryVmaasCache.Add(system.JSONChecksum, &vmaasDataCopy)
+		memoryVmaasCache.Add(system.Inventory.JSONChecksum, &vmaasDataCopy)
 	}
 	return vmaasData, nil
 }
 
-func tryGetVmaasRequest(system *models.SystemPlatform) (*vmaas.UpdatesV3Request, error) {
-	if system == nil || system.VmaasJSON == nil {
+func tryGetVmaasRequest(system *models.SystemPlatformV2) (*vmaas.UpdatesV3Request, error) {
+	if system == nil || system.Inventory.VmaasJSON == nil {
 		evaluationCnt.WithLabelValues("error-parse-vmaas-json").Inc()
-		utils.LogWarn("inventoryID", system.GetInventoryID(), "system with empty vmaas json")
+		invID := ""
+		if system != nil {
+			invID = system.GetInventoryID()
+		}
+		utils.LogWarn("inventoryID", invID, "system with empty vmaas json")
 		// skip the system
 		// don't return error as it will cause panic of evaluator pod
 		return nil, nil
 	}
 
 	inv := &models.SystemInventory{
-		InventoryID: system.InventoryID,
-		VmaasJSON:   system.VmaasJSON,
+		InventoryID: system.Inventory.InventoryID,
+		VmaasJSON:   system.Inventory.VmaasJSON,
 	}
 	updatesReq, err := parseVmaasJSON(inv)
 	if err != nil {
@@ -416,25 +420,26 @@ func tryGetVmaasRequest(system *models.SystemPlatform) (*vmaas.UpdatesV3Request,
 }
 
 func tryGetSystem(accountID int, inventoryID string,
-	requested *types.Rfc3339Timestamp) (*models.SystemPlatform, error) {
+	requested *types.Rfc3339Timestamp) (*models.SystemPlatformV2, error) {
 	system, err := loadSystemData(accountID, inventoryID)
 	if err != nil {
 		evaluationCnt.WithLabelValues("error-db-read-inventory-data").Inc()
 		return nil, base.WrapFatalDBError(err, "error loading system from DB")
 	}
-	if system.ID == 0 {
+	if system == nil || system.Inventory.ID == 0 {
 		evaluationCnt.WithLabelValues("error-db-read-inventory-data").Inc()
 		utils.LogWarn("inventoryID", inventoryID, "System not found in DB")
 		return nil, nil
 	}
 
-	if system.Stale && !enableStaleSysEval {
+	if system.Inventory.Stale && !enableStaleSysEval {
 		evaluationCnt.WithLabelValues("skipping-stale").Inc()
 		utils.LogWarn("inventoryID", inventoryID, "Skipping stale system")
 		return nil, nil
 	}
 
-	if requested != nil && system.LastEvaluation != nil && requested.Time().Before(*system.LastEvaluation) {
+	if requested != nil && system.Patch.LastEvaluation != nil &&
+		requested.Time().Before(*system.Patch.LastEvaluation) {
 		evaluationCnt.WithLabelValues("skip-old-msg").Inc()
 		utils.LogWarn("inventoryID", inventoryID, "Skipping old message")
 		return nil, nil
@@ -455,7 +460,7 @@ func commitWithObserve(tx *gorm.DB) error {
 
 // EvaluateAndStore first loads advisories and packages (including change evaluation)
 // and then executes all deletions, updates, and insertions in a single transaction.
-func evaluateAndStore(system *models.SystemPlatform,
+func evaluateAndStore(system *models.SystemPlatformV2,
 	vmaasData *vmaas.UpdatesV3Response, event *mqueue.PlatformEvent) error {
 	advisoriesByName, err := lazySaveAndLoadAdvisories(system, vmaasData)
 	if err != nil {
@@ -490,7 +495,7 @@ func evaluateAndStore(system *models.SystemPlatform,
 	}
 
 	if enableInventoryViews {
-		err = publishInventoryViewsEvent(tx, []models.SystemPlatform{*system}, event)
+		err = publishInventoryViewsEvent(tx, []models.SystemPlatformV2{*system}, event)
 		if err != nil {
 			evaluationCnt.WithLabelValues("error-inventory-views-publish").Inc()
 			utils.LogError("orgID", event.GetOrgID(), "inventoryID", system.GetInventoryID(), "err", err.Error(),
@@ -517,7 +522,7 @@ func evaluateAndStore(system *models.SystemPlatform,
 	return nil
 }
 
-func analyzeRepos(system *models.SystemPlatform) (thirdParty bool, err error) {
+func analyzeRepos(system *models.SystemPlatformV2) (thirdParty bool, err error) {
 	if !enableRepoAnalysis {
 		utils.LogInfo("repo analysis disabled, skipping")
 		return false, nil
@@ -531,12 +536,12 @@ func analyzeRepos(system *models.SystemPlatform) (thirdParty bool, err error) {
 	var thirdPartyCount int64
 	err = database.DB.Table("system_repo sr").
 		Joins("join repo r on r.id = sr.repo_id").
-		Where("sr.rh_account_id = ?", system.RhAccountID).
-		Where("sr.system_id = ?", system.ID).
+		Where("sr.rh_account_id = ?", system.Inventory.RhAccountID).
+		Where("sr.system_id = ?", system.Inventory.ID).
 		Where("r.third_party = true").
 		Count(&thirdPartyCount).Error
 	if err != nil {
-		utils.LogWarn("err", err.Error(), "accountID", system.RhAccountID, "systemID", system.ID,
+		utils.LogWarn("err", err.Error(), "accountID", system.Inventory.RhAccountID, "systemID", system.Inventory.ID,
 			"counting third party repos")
 		return false, err
 	}
@@ -574,15 +579,15 @@ var systemPatchEvaluatorUpdateColumns = map[string]struct{}{
 }
 
 // nolint: funlen
-func updateSystemPlatform(tx *gorm.DB, system *models.SystemPlatform,
+func updateSystemPlatform(tx *gorm.DB, system *models.SystemPlatformV2,
 	advisories SystemAdvisoryMap, installed, installable, applicable int) error {
 	tStart := time.Now()
 	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("system-update"))
-	if system.LastUpload != nil {
-		defer utils.ObserveSecondsSince(*system.LastUpload, uploadEvaluationDelay)
+	if system.Inventory.LastUpload != nil {
+		defer utils.ObserveSecondsSince(*system.Inventory.LastUpload, uploadEvaluationDelay)
 	}
-	if system.LastEvaluation != nil {
-		defer utils.ObserveHoursSince(*system.LastEvaluation, twoEvaluationsInterval)
+	if system.Patch.LastEvaluation != nil {
+		defer utils.ObserveHoursSince(*system.Patch.LastEvaluation, twoEvaluationsInterval)
 	}
 
 	lastEval := time.Now()
@@ -625,7 +630,7 @@ func updateSystemPlatform(tx *gorm.DB, system *models.SystemPlatform,
 	}
 
 	if enableRepoAnalysis {
-		data["third_party"] = system.ThirdParty
+		data["third_party"] = system.Patch.ThirdParty
 	}
 
 	for k := range data {
@@ -635,13 +640,14 @@ func updateSystemPlatform(tx *gorm.DB, system *models.SystemPlatform,
 	}
 
 	err := tx.Model(&models.SystemPatch{}).
-		Where("rh_account_id = ? AND system_id = ?", system.RhAccountID, system.ID).
+		Where("rh_account_id = ? AND system_id = ?", system.Inventory.RhAccountID, system.Inventory.ID).
 		Updates(data).Error
 
 	now := time.Now()
-	if system.LastUpload != nil && system.LastUpload.Sub(now) > time.Hour {
+	if system.Inventory.LastUpload != nil && system.Inventory.LastUpload.Sub(now) > time.Hour {
 		// log long evaluating systems
-		utils.LogWarn("id", system.InventoryID, "lastUpload", *system.LastUpload, "now", now, "uploadEvaluationDelay")
+		utils.LogWarn("id", system.Inventory.InventoryID, "lastUpload", *system.Inventory.LastUpload, "now", now,
+			"uploadEvaluationDelay")
 	}
 	if err != nil {
 		return err
@@ -650,21 +656,21 @@ func updateSystemPlatform(tx *gorm.DB, system *models.SystemPlatform,
 	// GORM map Updates does not refresh *system; keep in-memory patch-backed fields consistent
 	// for publishInventoryViewsEvent / publishNewAdvisoriesNotification in the same transaction.
 	le := lastEval
-	system.LastEvaluation = &le
+	system.Patch.LastEvaluation = &le
 	if enableAdvisoryAnalysis {
-		system.InstallableAdvisoryCountCache = installableCount
-		system.InstallableAdvisoryEnhCountCache = installableEnhCount
-		system.InstallableAdvisoryBugCountCache = installableBugCount
-		system.InstallableAdvisorySecCountCache = installableSecCount
-		system.ApplicableAdvisoryCountCache = applicableCount
-		system.ApplicableAdvisoryEnhCountCache = applicableEnhCount
-		system.ApplicableAdvisoryBugCountCache = applicableBugCount
-		system.ApplicableAdvisorySecCountCache = applicableSecCount
+		system.Patch.InstallableAdvisoryCountCache = installableCount
+		system.Patch.InstallableAdvisoryEnhCountCache = installableEnhCount
+		system.Patch.InstallableAdvisoryBugCountCache = installableBugCount
+		system.Patch.InstallableAdvisorySecCountCache = installableSecCount
+		system.Patch.ApplicableAdvisoryCountCache = applicableCount
+		system.Patch.ApplicableAdvisoryEnhCountCache = applicableEnhCount
+		system.Patch.ApplicableAdvisoryBugCountCache = applicableBugCount
+		system.Patch.ApplicableAdvisorySecCountCache = applicableSecCount
 	}
 	if enablePackageAnalysis {
-		system.PackagesInstalled = installed
-		system.PackagesInstallable = installable
-		system.PackagesApplicable = applicable
+		system.Patch.PackagesInstalled = installed
+		system.Patch.PackagesInstallable = installable
+		system.Patch.PackagesApplicable = applicable
 	}
 	return nil
 }
@@ -694,18 +700,15 @@ func callVMaas(ctx context.Context, request *vmaas.UpdatesV3Request) (*vmaas.Upd
 	return vmaasDataPtr.(*vmaas.UpdatesV3Response), nil
 }
 
-func loadSystemData(accountID int, inventoryID string) (*models.SystemPlatform, error) {
+func loadSystemData(accountID int, inventoryID string) (*models.SystemPlatformV2, error) {
 	tStart := time.Now()
 	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("data-loading"))
 
 	v2, err := loadSystemPlatformV2(database.DB, accountID, inventoryID)
 	if err != nil {
-		return &models.SystemPlatform{}, err
+		return nil, err
 	}
-	if v2 == nil {
-		return &models.SystemPlatform{}, nil
-	}
-	return systemPlatformV2ToSystemPlatform(v2), nil
+	return v2, nil
 }
 
 func validSystem(accountID int, systemID int64) bool {

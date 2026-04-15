@@ -9,9 +9,23 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"gorm.io/gorm"
 )
 
 const rhAccountID = 1
+
+func loadSystemsV2(t *testing.T, tx *gorm.DB, rhAccountID int, ids ...int64) []models.SystemPlatformV2 {
+	t.Helper()
+	out := make([]models.SystemPlatformV2, 0, len(ids))
+	for _, id := range ids {
+		var inv models.SystemInventory
+		assert.NoError(t, tx.Where("rh_account_id = ? AND id = ?", rhAccountID, id).First(&inv).Error)
+		var patch models.SystemPatch
+		assert.NoError(t, tx.Where("rh_account_id = ? AND system_id = ?", rhAccountID, id).First(&patch).Error)
+		out = append(out, models.SystemPlatformV2{Inventory: inv, Patch: patch})
+	}
+	return out
+}
 
 func TestMakeInventoryViewsEvent(t *testing.T) {
 	utils.SkipWithoutDB(t)
@@ -23,9 +37,7 @@ func TestMakeInventoryViewsEvent(t *testing.T) {
 	assert.NoError(t, tx.Where("id = ?", rhAccountID).First(&rhAccount).Error)
 	assert.NotEmpty(t, *rhAccount.OrgID)
 
-	var systems []models.SystemPlatform
-	assert.NoError(t, tx.Where("rh_account_id = ? AND id in (1,3)", rhAccountID).
-		Order("id").Find(&systems).Error)
+	systems := loadSystemsV2(t, tx, rhAccountID, 1, 3)
 	assert.Equal(t, 2, len(systems))
 
 	event, err := MakeInventoryViewsEvent(tx, *rhAccount.OrgID, systems)
@@ -58,7 +70,7 @@ func TestMakeInventoryViewsEventEmpty(t *testing.T) {
 	tx := database.DB.Begin()
 	defer tx.Rollback()
 
-	event, err := MakeInventoryViewsEvent(tx, "test-org", []models.SystemPlatform{})
+	event, err := MakeInventoryViewsEvent(tx, "test-org", []models.SystemPlatformV2{})
 	assert.NoError(t, err)
 	assert.Equal(t, "test-org", event.OrgID)
 	assert.Equal(t, 0, len(event.Hosts))
@@ -77,9 +89,7 @@ func TestMakeInventoryViewsEventNoTemplate(t *testing.T) {
 	assert.NotEmpty(t, *rhAccount.OrgID)
 	orgID := *rhAccount.OrgID
 
-	var systems []models.SystemPlatform
-	assert.NoError(t, tx.Where("rh_account_id = ? AND id in (4)", rhAccountID).
-		Order("id").Find(&systems).Error)
+	systems := loadSystemsV2(t, tx, rhAccountID, 4)
 	assert.Equal(t, 1, len(systems))
 
 	// Should not error, but template fields should be nil

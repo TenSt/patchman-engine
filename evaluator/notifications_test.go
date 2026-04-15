@@ -98,7 +98,7 @@ func TestAdvisoriesNotificationMessage(t *testing.T) {
 	}
 
 	displayName := "display-name"
-	system := &models.SystemPlatform{
+	inv := &models.SystemInventory{
 		InventoryID: inventoryID,
 		DisplayName: displayName,
 	}
@@ -107,7 +107,7 @@ func TestAdvisoriesNotificationMessage(t *testing.T) {
 	orgID := "1234567"
 	url := fmt.Sprintf("https://localhost/insights/inventory/%s", inventoryID)
 
-	notification, err := ntf.MakeNotification(system, tags, orgID, NewAdvisoryEvent, events)
+	notification, err := ntf.MakeNotification(inv, tags, orgID, NewAdvisoryEvent, events)
 	assert.Nil(t, err)
 	assert.Equal(t, orgID, notification.OrgID)
 	assert.Equal(t, url, notification.Context.HostURL)
@@ -129,13 +129,16 @@ func TestGetSystemTags(t *testing.T) {
 	core.SetupTestEnvironment()
 	configure()
 
-	system := models.SystemPlatform{
-		ID:          1,
-		RhAccountID: 1,
-		InventoryID: "00000000-0000-0000-0000-000000000001",
-		DisplayName: "display name",
+	system := &models.SystemPlatformV2{
+		Inventory: models.SystemInventory{
+			ID:          1,
+			RhAccountID: 1,
+			InventoryID: "00000000-0000-0000-0000-000000000001",
+			DisplayName: "display name",
+		},
+		Patch: models.SystemPatch{},
 	}
-	tags, err := getSystemTags(database.DB, &system)
+	tags, err := getSystemTags(database.DB, system)
 	expected := []ntf.SystemTag{
 		{Key: "k1", Value: "val1", Namespace: "ns1"},
 		{Key: "k2", Value: "val2", Namespace: "ns1"},
