@@ -152,42 +152,48 @@ func TestUpdateAdvisoryAccountData(t *testing.T) {
 	utils.SkipWithoutDB(t)
 	core.SetupTestEnvironment()
 
-	system := models.SystemPlatform{ID: 12, RhAccountID: 3}
+	system := &models.SystemPlatformV2{
+		Inventory: models.SystemInventory{ID: 12, RhAccountID: 3},
+		Patch:     models.SystemPatch{},
+	}
 	advisoryIDs := []int64{2, 3, 4}
-	database.CreateSystemAdvisories(t, system.RhAccountID, system.ID, advisoryIDs)
-	database.CreateAdvisoryAccountData(t, system.RhAccountID, advisoryIDs, 1)
+	database.CreateSystemAdvisories(t, system.Inventory.RhAccountID, system.InternalSystemID(), advisoryIDs)
+	database.CreateAdvisoryAccountData(t, system.Inventory.RhAccountID, advisoryIDs, 1)
 	advisoriesByName := extendedAdvisoryMap{
 		"ER-2": {
-			change:           Remove,
-			SystemAdvisories: models.SystemAdvisories{AdvisoryID: 2, SystemID: system.ID, RhAccountID: system.RhAccountID},
+			change: Remove,
+			SystemAdvisories: models.SystemAdvisories{
+				AdvisoryID: 2, SystemID: system.InternalSystemID(), RhAccountID: system.Inventory.RhAccountID},
 		},
 		"ER-3": {
-			change:           Remove,
-			SystemAdvisories: models.SystemAdvisories{AdvisoryID: 3, SystemID: system.ID, RhAccountID: system.RhAccountID},
+			change: Remove,
+			SystemAdvisories: models.SystemAdvisories{
+				AdvisoryID: 3, SystemID: system.InternalSystemID(), RhAccountID: system.Inventory.RhAccountID},
 		},
 		"ER-4": {
-			change:           Remove,
-			SystemAdvisories: models.SystemAdvisories{AdvisoryID: 4, SystemID: system.ID, RhAccountID: system.RhAccountID},
+			change: Remove,
+			SystemAdvisories: models.SystemAdvisories{
+				AdvisoryID: 4, SystemID: system.InternalSystemID(), RhAccountID: system.Inventory.RhAccountID},
 		},
 	}
 
 	// Update as if the advisories became patched
-	err := updateAdvisoryAccountData(database.DB, &system, advisoriesByName)
+	err := updateAdvisoryAccountData(database.DB, system, advisoriesByName)
 	assert.NoError(t, err)
-	database.CheckSystemAdvisories(t, system.ID, advisoryIDs)
-	database.CheckAdvisoriesAccountData(t, system.RhAccountID, advisoryIDs, 0)
+	database.CheckSystemAdvisories(t, system.InternalSystemID(), advisoryIDs)
+	database.CheckAdvisoriesAccountData(t, system.Inventory.RhAccountID, advisoryIDs, 0)
 
 	// Update as if the advisories became unpatched
 	for name, ea := range advisoriesByName {
 		ea.change = Add
 		advisoriesByName[name] = ea
 	}
-	err = updateAdvisoryAccountData(database.DB, &system, advisoriesByName)
+	err = updateAdvisoryAccountData(database.DB, system, advisoriesByName)
 	assert.NoError(t, err)
-	database.CheckAdvisoriesAccountData(t, system.RhAccountID, advisoryIDs, 1)
+	database.CheckAdvisoriesAccountData(t, system.Inventory.RhAccountID, advisoryIDs, 1)
 
-	database.DeleteSystemAdvisories(t, system.ID, advisoryIDs)
-	database.DeleteAdvisoryAccountData(t, system.RhAccountID, advisoryIDs)
+	database.DeleteSystemAdvisories(t, system.InternalSystemID(), advisoryIDs)
+	database.DeleteAdvisoryAccountData(t, system.Inventory.RhAccountID, advisoryIDs)
 }
 
 func TestGetMissingAdvisories(t *testing.T) {
@@ -220,7 +226,10 @@ func TestProcessAdvisories(t *testing.T) {
 	core.SetupTestEnvironment()
 
 	systemID := int64(2)
-	system := models.SystemPlatform{RhAccountID: 1, ID: systemID}
+	system := &models.SystemPlatformV2{
+		Inventory: models.SystemInventory{RhAccountID: 1, ID: systemID},
+		Patch:     models.SystemPatch{},
+	}
 	extendedAdvisories := extendedAdvisoryMap{
 		"ER-2": extendedAdvisory{change: Keep, SystemAdvisories: models.SystemAdvisories{
 			AdvisoryID: int64(2),
@@ -233,7 +242,7 @@ func TestProcessAdvisories(t *testing.T) {
 		}},
 	}
 
-	deleteIDs, advisoryObjs := processAdvisories(&system, extendedAdvisories)
+	deleteIDs, advisoryObjs := processAdvisories(system, extendedAdvisories)
 	assert.Equal(t, 0, len(deleteIDs))
 	assert.Equal(t, 2, len(advisoryObjs))
 }
@@ -274,7 +283,10 @@ func TestUpsertSystemAdvisories(t *testing.T) {
 }
 
 func TestCalcAdvisoryChanges(t *testing.T) {
-	system := models.SystemPlatform{ID: systemID, RhAccountID: rhAccountID}
+	system := &models.SystemPlatformV2{
+		Inventory: models.SystemInventory{ID: systemID, RhAccountID: rhAccountID},
+		Patch:     models.SystemPatch{},
+	}
 	advisoriesByName := extendedAdvisoryMap{
 		"ER-102": {
 			change:           Update,
@@ -294,7 +306,7 @@ func TestCalcAdvisoryChanges(t *testing.T) {
 		},
 	}
 
-	changes := calcAdvisoryChanges(&system, advisoriesByName)
+	changes := calcAdvisoryChanges(system, advisoriesByName)
 	expected := map[int64]models.AdvisoryAccountData{
 		102: {SystemsApplicable: 1, SystemsInstallable: 1},
 		103: {SystemsApplicable: -1, SystemsInstallable: -1},

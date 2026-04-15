@@ -46,7 +46,7 @@ func getUnnotifiedAdvisories(tx *gorm.DB, accountID int, newAdvs SystemAdvisoryM
 	return unAdvs, nil
 }
 
-func getSystemTags(tx *gorm.DB, system *models.SystemPlatform) ([]ntf.SystemTag, error) {
+func getSystemTags(tx *gorm.DB, system *models.SystemPlatformV2) ([]ntf.SystemTag, error) {
 	if system == nil {
 		return nil, nil
 	}
@@ -55,8 +55,8 @@ func getSystemTags(tx *gorm.DB, system *models.SystemPlatform) ([]ntf.SystemTag,
 	var tagsJSON string
 	err := tx.Table("system_inventory").
 		Select("tags").
-		Where("rh_account_id = ?", system.RhAccountID).
-		Where("id = ?", system.ID).
+		Where("rh_account_id = ?", system.Inventory.RhAccountID).
+		Where("id = ?", system.InternalSystemID()).
 		Scan(&tagsJSON).Error
 	if err != nil {
 		return nil, errors.Wrap(err, "system tags query failed")
@@ -68,7 +68,7 @@ func getSystemTags(tx *gorm.DB, system *models.SystemPlatform) ([]ntf.SystemTag,
 	return tags, nil
 }
 
-func publishNewAdvisoriesNotification(tx *gorm.DB, system *models.SystemPlatform, orgID string,
+func publishNewAdvisoriesNotification(tx *gorm.DB, system *models.SystemPlatformV2, orgID string,
 	newAdvisories SystemAdvisoryMap) error {
 	if notificationsPublisher == nil {
 		return nil
@@ -77,7 +77,7 @@ func publishNewAdvisoriesNotification(tx *gorm.DB, system *models.SystemPlatform
 	tStart := time.Now()
 	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("advisory-notification-publish"))
 
-	advisories, err := getUnnotifiedAdvisories(tx, system.RhAccountID, newAdvisories)
+	advisories, err := getUnnotifiedAdvisories(tx, system.Inventory.RhAccountID, newAdvisories)
 	if err != nil {
 		return errors.Wrap(err, "getting unnotified advisories failed")
 	}
@@ -96,12 +96,12 @@ func publishNewAdvisoriesNotification(tx *gorm.DB, system *models.SystemPlatform
 		return errors.Wrap(err, "getting system tags failed")
 	}
 
-	notif, err := ntf.MakeNotification(system, tags, orgID, NewAdvisoryEvent, events)
+	notif, err := ntf.MakeNotification(&system.Inventory, tags, orgID, NewAdvisoryEvent, events)
 	if err != nil {
 		return errors.Wrap(err, "creating notification failed")
 	}
 
-	msg, err := mqueue.MessageFromJSON(system.InventoryID, notif, nil)
+	msg, err := mqueue.MessageFromJSON(system.GetInventoryID(), notif, nil)
 	if err != nil {
 		return errors.Wrap(err, "creating message from notification failed")
 	}
@@ -116,11 +116,11 @@ func publishNewAdvisoriesNotification(tx *gorm.DB, system *models.SystemPlatform
 		advisoryIDs = append(advisoryIDs, a.AdvisoryID)
 	}
 
-	utils.LogInfo("inventoryID", system.InventoryID, "advisoryIDs", advisoryIDs, "orgID", orgID,
+	utils.LogInfo("inventoryID", system.GetInventoryID(), "advisoryIDs", advisoryIDs, "orgID", orgID,
 		"notification sent successfully")
 
 	err = tx.Table("advisory_account_data").
-		Where("rh_account_id = ? AND advisory_id IN (?)", system.RhAccountID, advisoryIDs).
+		Where("rh_account_id = ? AND advisory_id IN (?)", system.Inventory.RhAccountID, advisoryIDs).
 		Update("notified", time.Now()).Error
 	if err != nil {
 		return errors.Wrap(err, "updating notified column failed")

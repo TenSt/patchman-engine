@@ -109,13 +109,13 @@ func TestUpdateSystemPlatform(t *testing.T) {
 	reporterID2 := 3
 	assertSystemInDB(t, id, &accountID2, &reporterID2)
 
-	assert.Equal(t, sys1.ID, sys2.ID)
-	assert.Equal(t, sys1.InventoryID, sys2.InventoryID)
-	assert.Equal(t, sys1.Stale, sys2.Stale)
-	assert.Equal(t, sys1.SatelliteManaged, sys2.SatelliteManaged)
-	assert.NotNil(t, sys1.StaleTimestamp)
-	assert.Nil(t, sys1.StaleWarningTimestamp)
-	assert.Nil(t, sys1.CulledTimestamp)
+	assert.Equal(t, sys1.Inventory.ID, sys2.Inventory.ID)
+	assert.Equal(t, sys1.Inventory.InventoryID, sys2.Inventory.InventoryID)
+	assert.Equal(t, sys1.Inventory.Stale, sys2.Inventory.Stale)
+	assert.Equal(t, sys1.Inventory.SatelliteManaged, sys2.Inventory.SatelliteManaged)
+	assert.NotNil(t, sys1.Inventory.StaleTimestamp)
+	assert.Nil(t, sys1.Inventory.StaleWarningTimestamp)
+	assert.Nil(t, sys1.Inventory.CulledTimestamp)
 
 	deleteData(t)
 }
@@ -368,21 +368,24 @@ func TestStoreOrUpdateSysPlatform(t *testing.T) {
 
 	colsToUpdate := []string{"vmaas_json", "json_checksum", "reporter_id", "satellite_managed"}
 	vmaasJSON := "this_is_json"
-	inStore := models.SystemPlatform{
-		InventoryID:      "99990000-0000-0000-0000-000000000001",
-		RhAccountID:      1,
-		VmaasJSON:        &vmaasJSON,
-		DisplayName:      "display_name",
-		SatelliteManaged: false,
+	inStore := &models.SystemPlatformV2{
+		Inventory: models.SystemInventory{
+			InventoryID:      "99990000-0000-0000-0000-000000000001",
+			RhAccountID:      1,
+			VmaasJSON:        &vmaasJSON,
+			DisplayName:      "display_name",
+			SatelliteManaged: false,
+		},
+		Patch: models.SystemPatch{RhAccountID: 1},
 	}
 	// insert new row
 	hostEvent := createTestUploadEvent("1", id, "puptoo", false, true, "created")
-	err := storeOrUpdateSysPlatform(database.DB, &inStore, &hostEvent.Host, colsToUpdate)
+	err := storeOrUpdateSysPlatform(database.DB, inStore, &hostEvent.Host, colsToUpdate)
 	assert.Nil(t, err)
 
 	var outStore models.SystemInventory
-	assert.NoError(t, database.DB.Where("id = ? AND rh_account_id = ?", inStore.ID, inStore.RhAccountID).
-		First(&outStore).Error)
+	assert.NoError(t, database.DB.Where("id = ? AND rh_account_id = ?", inStore.Inventory.ID, inStore.Inventory.RhAccountID). // nolint:lll
+																	First(&outStore).Error)
 	defer func() {
 		database.DB.Unscoped().Where("rh_account_id = ? AND system_id = ?", outStore.RhAccountID, outStore.ID).
 			Delete(&models.SystemPatch{})
@@ -390,14 +393,14 @@ func TestStoreOrUpdateSysPlatform(t *testing.T) {
 			Delete(&models.SystemInventory{})
 	}()
 
-	assert.Equal(t, inStore.InventoryID, outStore.InventoryID)
-	assert.Equal(t, inStore.RhAccountID, outStore.RhAccountID)
-	assert.Equal(t, *inStore.VmaasJSON, *outStore.VmaasJSON)
-	assert.Equal(t, inStore.SatelliteManaged, outStore.SatelliteManaged)
+	assert.Equal(t, inStore.Inventory.InventoryID, outStore.InventoryID)
+	assert.Equal(t, inStore.Inventory.RhAccountID, outStore.RhAccountID)
+	assert.Equal(t, *inStore.Inventory.VmaasJSON, *outStore.VmaasJSON)
+	assert.Equal(t, inStore.Inventory.SatelliteManaged, outStore.SatelliteManaged)
 
 	// verify SystemInventory was created from Host fields
 	var inventoryAfterInsert models.SystemInventory
-	err = database.DB.Where("id = ?", inStore.ID).First(&inventoryAfterInsert).Error
+	err = database.DB.Where("id = ?", inStore.Inventory.ID).First(&inventoryAfterInsert).Error
 	assert.Nil(t, err)
 
 	assert.Contains(t, string(inventoryAfterInsert.Tags), `"namespace": "insights-client"`)
@@ -431,31 +434,36 @@ func TestStoreOrUpdateSysPlatform(t *testing.T) {
 	var patchAfterInsert models.SystemPatch
 	assert.NoError(t, database.DB.Where("rh_account_id = ? AND system_id = ?", outStore.RhAccountID, outStore.ID).
 		First(&patchAfterInsert).Error)
-	inUpdate := models.SystemPlatform{
-		ID:               outStore.ID,
-		InventoryID:      outStore.InventoryID,
-		RhAccountID:      outStore.RhAccountID,
-		VmaasJSON:        &updateJSON,
-		JSONChecksum:     &updateJSON,
-		ReporterID:       &reporter,
-		DisplayName:      "should_not_be_updated",
-		SatelliteManaged: true,
-		TemplateID:       patchAfterInsert.TemplateID,
+	inUpdate := &models.SystemPlatformV2{
+		Inventory: models.SystemInventory{
+			ID:               outStore.ID,
+			InventoryID:      outStore.InventoryID,
+			RhAccountID:      outStore.RhAccountID,
+			VmaasJSON:        &updateJSON,
+			JSONChecksum:     &updateJSON,
+			ReporterID:       &reporter,
+			DisplayName:      "should_not_be_updated",
+			SatelliteManaged: true,
+		},
+		Patch: models.SystemPatch{
+			RhAccountID: outStore.RhAccountID,
+			TemplateID:  patchAfterInsert.TemplateID,
+		},
 	}
 
 	// update row
-	err = storeOrUpdateSysPlatform(database.DB, &inUpdate, &hostEvent.Host, colsToUpdate)
+	err = storeOrUpdateSysPlatform(database.DB, inUpdate, &hostEvent.Host, colsToUpdate)
 	assert.Nil(t, err)
 
 	var outUpdate models.SystemInventory
-	assert.NoError(t, database.DB.Where("id = ? AND rh_account_id = ?", inUpdate.ID, inUpdate.RhAccountID).
-		First(&outUpdate).Error)
-	assert.Equal(t, inUpdate.InventoryID, outUpdate.InventoryID)
-	assert.Equal(t, inUpdate.RhAccountID, outUpdate.RhAccountID)
-	assert.Equal(t, *inUpdate.VmaasJSON, *outUpdate.VmaasJSON)
-	assert.Equal(t, *inUpdate.JSONChecksum, *outUpdate.JSONChecksum)
-	assert.Equal(t, *inUpdate.ReporterID, *outUpdate.ReporterID)
-	assert.Equal(t, inUpdate.SatelliteManaged, outUpdate.SatelliteManaged)
+	assert.NoError(t, database.DB.Where("id = ? AND rh_account_id = ?", inUpdate.Inventory.ID, inUpdate.Inventory.RhAccountID). // nolint:lll
+																	First(&outUpdate).Error)
+	assert.Equal(t, inUpdate.Inventory.InventoryID, outUpdate.InventoryID)
+	assert.Equal(t, inUpdate.Inventory.RhAccountID, outUpdate.RhAccountID)
+	assert.Equal(t, *inUpdate.Inventory.VmaasJSON, *outUpdate.VmaasJSON)
+	assert.Equal(t, *inUpdate.Inventory.JSONChecksum, *outUpdate.JSONChecksum)
+	assert.Equal(t, *inUpdate.Inventory.ReporterID, *outUpdate.ReporterID)
+	assert.Equal(t, inUpdate.Inventory.SatelliteManaged, outUpdate.SatelliteManaged)
 	// it should update the row
 	assert.Equal(t, outStore.ID, outUpdate.ID)
 	// DisplayName is not in colsToUpdate, it should not be updated

@@ -24,7 +24,7 @@ func configureInventoryViews() {
 	}
 }
 
-func publishInventoryViewsEvent(tx *gorm.DB, systems []models.SystemPlatform, origin *mqueue.PlatformEvent) error {
+func publishInventoryViewsEvent(tx *gorm.DB, systems []models.SystemPlatformV2, origin *mqueue.PlatformEvent) error {
 	if inventoryViewsPublisher == nil {
 		return nil
 	}
@@ -60,10 +60,10 @@ func publishInventoryViewsEvent(tx *gorm.DB, systems []models.SystemPlatform, or
 	// log the event
 	systemIDs := make([]int64, len(systems))
 	for i, s := range systems {
-		systemIDs[i] = s.ID
+		systemIDs[i] = s.InternalSystemID()
 	}
 
-	utils.LogInfo("rh_account_ID", systems[0].RhAccountID, "systemIDs", systemIDs,
+	utils.LogInfo("rh_account_ID", systems[0].Inventory.RhAccountID, "systemIDs", systemIDs,
 		"inventory views event sent successfully")
 
 	return nil

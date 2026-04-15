@@ -3,9 +3,11 @@ package vmaas_sync
 import (
 	"app/base/core"
 	"app/base/database"
+	"app/base/models"
 	"app/base/mqueue"
 	"app/base/types"
 	"app/base/utils"
+	"sort"
 	"testing"
 	"time"
 
@@ -35,9 +37,30 @@ func TestGetAllInventoryIDs(t *testing.T) {
 	Configure()
 
 	inventoryAIDs, err := getAllInventoryIDs()
-	systems := database.GetAllSystems(t)
 	assert.Nil(t, err)
+
+	// Mirror getAllInventoryIDs: only rows with a system_patch; same join as send_messages.go.
+	var systems []*models.SystemInventory
+	assert.NoError(t, database.DB.Table("system_inventory AS si").
+		Select("si.*").
+		Joins("JOIN system_patch sp ON si.id = sp.system_id AND si.rh_account_id = sp.rh_account_id").
+		Find(&systems).Error)
 	assert.Equal(t, len(inventoryAIDs), len(systems))
+
+	// getAllInventoryIDs orders by ra.id only; Find order is unspecified. Sort both for stable comparison.
+	sort.Slice(inventoryAIDs, func(i, j int) bool {
+		if inventoryAIDs[i].RhAccountID != inventoryAIDs[j].RhAccountID {
+			return inventoryAIDs[i].RhAccountID < inventoryAIDs[j].RhAccountID
+		}
+		return inventoryAIDs[i].InventoryID < inventoryAIDs[j].InventoryID
+	})
+	sort.Slice(systems, func(i, j int) bool {
+		if systems[i].RhAccountID != systems[j].RhAccountID {
+			return systems[i].RhAccountID < systems[j].RhAccountID
+		}
+		return systems[i].InventoryID < systems[j].InventoryID
+	})
+
 	for i, inv := range inventoryAIDs {
 		assert.NotNil(t, inv.OrgID)
 		assert.Equal(t, systems[i].InventoryID, inv.InventoryID)

@@ -174,8 +174,8 @@ func HandleUpload(event HostEvent) error {
 		return nil
 	}
 
-	if sys.UnchangedSince != nil && sys.LastEvaluation != nil {
-		if sys.UnchangedSince.Before(*sys.LastEvaluation) {
+	if sys.Inventory.UnchangedSince != nil && sys.Patch.LastEvaluation != nil {
+		if sys.Inventory.UnchangedSince.Before(*sys.Patch.LastEvaluation) {
 			logAndObserve(UploadSuccessNoEval, ReceivedSuccessNoEval, &event, &ptEvent, tStart, SuccessStatus, true)
 			return nil
 		}
@@ -183,9 +183,9 @@ func HandleUpload(event HostEvent) error {
 
 	ptEvent.StatusMsg = ProcessingStatus
 	if event.Type == "created" {
-		createdEventsBuffer.bufferEvalEvents(sys.InventoryID, sys.RhAccountID, &ptEvent)
+		createdEventsBuffer.bufferEvalEvents(sys.GetInventoryID(), sys.Inventory.RhAccountID, &ptEvent)
 	} else {
-		updatedEventsBuffer.bufferEvalEvents(sys.InventoryID, sys.RhAccountID, &ptEvent)
+		updatedEventsBuffer.bufferEvalEvents(sys.GetInventoryID(), sys.Inventory.RhAccountID, &ptEvent)
 	}
 	logAndObserve(UploadSuccess, ReceivedSuccess, &event, &ptEvent, tStart, SuccessStatus, false)
 	return nil
@@ -308,9 +308,9 @@ func hostTemplate(tx *gorm.DB, accountID int, host *Host) *int64 {
 }
 
 // nolint: funlen
-// Stores or updates base system profile, returing internal system id
+// Stores or updates base system profile, returning inventory + patch aggregate.
 func updateSystemPlatform(tx *gorm.DB, accountID int, host *Host,
-	yumUpdates *YumUpdates, updatesReq *vmaas.UpdatesV3Request) (*models.SystemPlatform, error) {
+	yumUpdates *YumUpdates, updatesReq *vmaas.UpdatesV3Request) (*models.SystemPlatformV2, error) {
 	tStart := time.Now()
 	defer utils.ObserveSecondsSince(tStart, messagePartDuration.WithLabelValues("update-system-platform"))
 	// NOTE: if we add a map to vmaas.UpdatesV3Request in the future, we need to use
@@ -345,24 +345,29 @@ func updateSystemPlatform(tx *gorm.DB, accountID int, host *Host,
 	isBootc := len(host.SystemProfile.BootcStatus.Booted.Image) > 0
 
 	updatesReqJSONString := string(updatesReqJSON)
-	systemPlatform := models.SystemPlatform{
-		InventoryID:           inventoryID,
-		RhAccountID:           accountID,
-		DisplayName:           displayName,
-		VmaasJSON:             utils.EmptyToNil(&updatesReqJSONString),
-		JSONChecksum:          utils.EmptyToNil(&jsonChecksum),
-		LastUpload:            host.GetLastUpload(),
-		StaleTimestamp:        host.StaleTimestamp.Time(),
-		StaleWarningTimestamp: host.StaleWarningTimestamp.Time(),
-		CulledTimestamp:       host.CulledTimestamp.Time(),
-		ReporterID:            getReporterID(host.Reporter),
-		YumUpdates:            yumUpdates.GetRawParsed(),
-		YumChecksum:           utils.EmptyToNil(&yumChecksum),
-		SatelliteManaged:      host.SystemProfile.SatelliteManaged,
-		BuiltPkgcache:         yumUpdates.GetBuiltPkgcache(),
-		Arch:                  host.SystemProfile.Arch,
-		Bootc:                 isBootc,
-		TemplateID:            hostTemplate(tx, accountID, host),
+	systemPlatform := &models.SystemPlatformV2{
+		Inventory: models.SystemInventory{
+			InventoryID:           inventoryID,
+			RhAccountID:           accountID,
+			DisplayName:           displayName,
+			VmaasJSON:             utils.EmptyToNil(&updatesReqJSONString),
+			JSONChecksum:          utils.EmptyToNil(&jsonChecksum),
+			LastUpload:            host.GetLastUpload(),
+			StaleTimestamp:        host.StaleTimestamp.Time(),
+			StaleWarningTimestamp: host.StaleWarningTimestamp.Time(),
+			CulledTimestamp:       host.CulledTimestamp.Time(),
+			ReporterID:            getReporterID(host.Reporter),
+			YumUpdates:            yumUpdates.GetRawParsed(),
+			YumChecksum:           utils.EmptyToNil(&yumChecksum),
+			SatelliteManaged:      host.SystemProfile.SatelliteManaged,
+			BuiltPkgcache:         yumUpdates.GetBuiltPkgcache(),
+			Arch:                  host.SystemProfile.Arch,
+			Bootc:                 isBootc,
+		},
+		Patch: models.SystemPatch{
+			RhAccountID: accountID,
+			TemplateID:  hostTemplate(tx, accountID, host),
+		},
 	}
 
 	type OldChecksums struct {
@@ -391,16 +396,16 @@ func updateSystemPlatform(tx *gorm.DB, accountID int, host *Host,
 		colsToUpdate = append(colsToUpdate, "yum_updates", "yum_checksum")
 	}
 
-	if err := storeOrUpdateSysPlatform(tx, &systemPlatform, host, colsToUpdate); err != nil {
+	if err := storeOrUpdateSysPlatform(tx, systemPlatform, host, colsToUpdate); err != nil {
 		return nil, errors.Wrap(err, "Unable to save or update system in database")
 	}
 
 	if shouldUpdateRepos {
 		// We also don't need to update repos if vmaas_json haven't changed
 		addedRepos, addedSysRepos, deletedSysRepos, err = updateRepos(tx, host.SystemProfile, accountID,
-			systemPlatform.ID, updatesReq.RepositoryList)
+			systemPlatform.Inventory.ID, updatesReq.RepositoryList)
 		if err != nil {
-			utils.LogError("repository_list", updatesReq.RepositoryList, "inventoryID", systemPlatform.ID,
+			utils.LogError("repository_list", updatesReq.RepositoryList, "inventoryID", inventoryID,
 				"repos failed to insert")
 			return nil, errors.Wrap(err, "unable to update system repos")
 		}
@@ -410,25 +415,25 @@ func updateSystemPlatform(tx *gorm.DB, accountID int, host *Host,
 		len(updatesReq.RepositoryList), "modules", len(updatesReq.GetModulesList()),
 		"addedRepos", addedRepos, "addedSysRepos", addedSysRepos, "deletedSysRepos", deletedSysRepos,
 		"System created or updated successfully")
-	return &systemPlatform, nil
+	return systemPlatform, nil
 }
 
 // nolint: funlen
 func storeOrUpdateSysPlatform(
 	tx *gorm.DB,
-	system *models.SystemPlatform,
+	system *models.SystemPlatformV2,
 	host *Host,
 	colsToUpdate []string,
 ) error {
 	// Resolve system_inventory.id by account + inventory UUID (not via the system_platform view).
 	var existingID int64
 	if err := tx.Model(&models.SystemInventory{}).
-		Where("rh_account_id = ? AND inventory_id = ?::uuid", system.RhAccountID, system.InventoryID).
+		Where("rh_account_id = ? AND inventory_id = ?::uuid", system.Inventory.RhAccountID, system.Inventory.InventoryID).
 		Select("id").
 		Scan(&existingID).Error; err != nil {
 		utils.LogWarn("err", err, "couldn't find system for update")
 	}
-	system.ID = existingID
+	system.Inventory.ID = existingID
 
 	// RETURNING from system_inventory upsert (id, unchanged_since, …)
 	txi := tx.Clauses(clause.Returning{
@@ -438,66 +443,45 @@ func storeOrUpdateSysPlatform(
 		},
 	})
 
+	system.Inventory.Created = host.Created
+	system.Inventory.Tags = utils.MarshalNilToJSONB(host.Tags)
 	hostWorkspaces := inventory.Groups(host.Groups)
-	inventoryRecord := models.SystemInventory{
-		ID:                               system.ID,
-		InventoryID:                      system.InventoryID,
-		RhAccountID:                      system.RhAccountID,
-		VmaasJSON:                        system.VmaasJSON,
-		JSONChecksum:                     system.JSONChecksum,
-		LastUpload:                       system.LastUpload,
-		Created:                          host.Created,
-		DisplayName:                      system.DisplayName,
-		ReporterID:                       system.ReporterID,
-		YumUpdates:                       system.YumUpdates,
-		YumChecksum:                      system.YumChecksum,
-		SatelliteManaged:                 system.SatelliteManaged,
-		BuiltPkgcache:                    system.BuiltPkgcache,
-		Arch:                             system.Arch,
-		Bootc:                            system.Bootc,
-		Tags:                             utils.MarshalNilToJSONB(host.Tags),
-		Workspaces:                       &hostWorkspaces,
-		StaleTimestamp:                   system.StaleTimestamp,
-		StaleWarningTimestamp:            system.StaleWarningTimestamp,
-		CulledTimestamp:                  system.CulledTimestamp,
-		OSName:                           utils.EmptyToNil(&host.SystemProfile.OperatingSystem.Name),
-		OSMajor:                          &host.SystemProfile.OperatingSystem.Major,
-		OSMinor:                          &host.SystemProfile.OperatingSystem.Minor,
-		RhsmVersion:                      utils.EmptyToNil(&host.SystemProfile.Rhsm.Version),
-		SubscriptionManagerID:            host.SystemProfile.OwnerID,
-		SapWorkload:                      host.SystemProfile.Workloads.Sap.SapSystem,
-		SapWorkloadSIDs:                  pq.StringArray(host.SystemProfile.Workloads.Sap.Sids),
-		AnsibleWorkload:                  host.SystemProfile.Workloads.Ansible.ControllerVersion != "",
-		AnsibleWorkloadControllerVersion: utils.EmptyToNil(&host.SystemProfile.Workloads.Ansible.ControllerVersion),
-		MssqlWorkload:                    host.SystemProfile.Workloads.Mssql.Version != "",
-		MssqlWorkloadVersion:             utils.EmptyToNil(&host.SystemProfile.Workloads.Mssql.Version),
-	}
+	system.Inventory.Workspaces = &hostWorkspaces
+	system.Inventory.OSName = utils.EmptyToNil(&host.SystemProfile.OperatingSystem.Name)
+	system.Inventory.OSMajor = &host.SystemProfile.OperatingSystem.Major
+	system.Inventory.OSMinor = &host.SystemProfile.OperatingSystem.Minor
+	system.Inventory.RhsmVersion = utils.EmptyToNil(&host.SystemProfile.Rhsm.Version)
+	system.Inventory.SubscriptionManagerID = host.SystemProfile.OwnerID
+	system.Inventory.SapWorkload = host.SystemProfile.Workloads.Sap.SapSystem
+	system.Inventory.SapWorkloadSIDs = pq.StringArray(host.SystemProfile.Workloads.Sap.Sids)
+	system.Inventory.AnsibleWorkload = host.SystemProfile.Workloads.Ansible.ControllerVersion != ""
+	system.Inventory.AnsibleWorkloadControllerVersion = utils.EmptyToNil(&host.SystemProfile.Workloads.Ansible.ControllerVersion) // nolint:lll
+	system.Inventory.MssqlWorkload = host.SystemProfile.Workloads.Mssql.Version != ""
+	system.Inventory.MssqlWorkloadVersion = utils.EmptyToNil(&host.SystemProfile.Workloads.Mssql.Version)
 
 	err := database.OnConflictUpdateMulti(txi, []string{"rh_account_id", "inventory_id"}, colsToUpdate...).
-		Create(&inventoryRecord).Error
+		Create(&system.Inventory).Error
 	if err != nil {
 		return base.WrapFatalDBError(err, "unable to insert to system_inventory")
 	}
 
-	system.ID = inventoryRecord.ID
-	system.InventoryID = inventoryRecord.InventoryID
-	system.RhAccountID = inventoryRecord.RhAccountID
-	system.UnchangedSince = inventoryRecord.UnchangedSince
+	// RETURNING refreshed id / keys / unchanged_since on system.Inventory.
+	system.Patch.RhAccountID = system.Inventory.RhAccountID
 
 	return upsertSystemPatch(tx, system)
 }
 
-func upsertSystemPatch(tx *gorm.DB, system *models.SystemPlatform) error {
+func upsertSystemPatch(tx *gorm.DB, system *models.SystemPlatformV2) error {
 	tx = tx.Clauses(clause.Returning{Columns: []clause.Column{{Name: "last_evaluation"}}})
 
 	patchRecord := models.SystemPatch{
-		SystemID:    system.ID,
-		RhAccountID: system.RhAccountID,
-		TemplateID:  system.TemplateID,
+		SystemID:    system.Inventory.ID,
+		RhAccountID: system.Inventory.RhAccountID,
+		TemplateID:  system.Patch.TemplateID,
 	}
 
 	var patchColsToUpdate = []string{}
-	if system.TemplateID != nil {
+	if system.Patch.TemplateID != nil {
 		patchColsToUpdate = append(patchColsToUpdate, "template_id")
 	}
 
@@ -520,7 +504,8 @@ func upsertSystemPatch(tx *gorm.DB, system *models.SystemPlatform) error {
 		}
 	}
 
-	system.LastEvaluation = patchRecord.LastEvaluation
+	system.Patch.SystemID = patchRecord.SystemID
+	system.Patch.LastEvaluation = patchRecord.LastEvaluation
 	return nil
 }
 
@@ -746,7 +731,7 @@ func processModules(systemProfile *inventory.SystemProfile) *[]vmaas.UpdatesV3Re
 }
 
 // We have received new upload, update stored host data, and re-evaluate the host against VMaaS
-func processUpload(host *Host, yumUpdates *YumUpdates) (*models.SystemPlatform, error) {
+func processUpload(host *Host, yumUpdates *YumUpdates) (*models.SystemPlatformV2, error) {
 	tStart := time.Now()
 	defer utils.ObserveSecondsSince(tStart, messagePartDuration.WithLabelValues("upload-processing"))
 	// Ensure we have account stored

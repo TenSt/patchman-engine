@@ -18,10 +18,16 @@ func TestInitDelete(t *testing.T) {
 	utils.TestLoadEnv("conf/test.env")
 	core.SetupTest(t)
 
-	assert.NoError(t, database.DB.Create(&models.SystemPlatform{
+	inv := models.SystemInventory{
 		InventoryID: del,
 		RhAccountID: 1,
 		DisplayName: del,
+		Tags:        []byte("[]"),
+	}
+	assert.NoError(t, database.DB.Create(&inv).Error)
+	assert.NoError(t, database.DB.Create(&models.SystemPatch{
+		SystemID:    inv.ID,
+		RhAccountID: 1,
 	}).Error)
 	utils.TestLoadEnv("conf/manager.env")
 }

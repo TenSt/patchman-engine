@@ -81,13 +81,13 @@ type SystemTag struct {
 	Value     string `json:"value,omitempty"`
 }
 
-func MakeNotification(system *models.SystemPlatform, systemTags []SystemTag, orgID string,
+func MakeNotification(inv *models.SystemInventory, systemTags []SystemTag, orgID string,
 	eventType string, events []Event) (*Notification, error) {
 	if orgID == "" || orgID == "null" {
 		return nil, errors.New("invalid orgID")
 	}
 
-	hostURL := fmt.Sprintf("https://%s/insights/inventory/%s", utils.CoreCfg.ConsoledotHostname, system.InventoryID)
+	hostURL := fmt.Sprintf("https://%s/insights/inventory/%s", utils.CoreCfg.ConsoledotHostname, inv.InventoryID)
 
 	return &Notification{
 		Version:     Version,
@@ -97,8 +97,8 @@ func MakeNotification(system *models.SystemPlatform, systemTags []SystemTag, org
 		// ISO-8601 formatted time
 		Timestamp: time.Now().Format(time.RFC3339),
 		Context: Context{
-			InventoryID: system.InventoryID,
-			DisplayName: system.DisplayName,
+			InventoryID: inv.InventoryID,
+			DisplayName: inv.DisplayName,
 			HostURL:     hostURL,
 			Tags:        systemTags,
 		},

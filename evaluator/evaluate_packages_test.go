@@ -18,8 +18,11 @@ func TestAnalyzePackages(t *testing.T) {
 	configure()
 	loadCache()
 
-	system := models.SystemPlatform{ID: 11, RhAccountID: 2}
-	database.CheckSystemPackages(t, system.RhAccountID, system.ID, 0)
+	system := &models.SystemPlatformV2{
+		Inventory: models.SystemInventory{ID: 11, RhAccountID: 2},
+		Patch:     models.SystemPatch{},
+	}
+	database.CheckSystemPackages(t, system.Inventory.RhAccountID, system.InternalSystemID(), 0)
 	database.CheckEVRAsInDB(t, 0, "12.0.1-1.fc31.x86_64") // lazy added package
 	// we send request with zero epoch and expect response with zero epoch
 	// so we have to test with zero epoch
@@ -38,17 +41,17 @@ func TestAnalyzePackages(t *testing.T) {
 				EVRA:        utils.PtrString("0:2.2.3-1.fc33.x86_64"),
 			}}}}}
 
-	pkgByName, installed, installable, applicable, err := lazySaveAndLoadPackages(&system, &vmaasData)
+	pkgByName, installed, installable, applicable, err := lazySaveAndLoadPackages(system, &vmaasData)
 	assert.Nil(t, err)
-	err = updateSystemPackages(database.DB, &system, pkgByName)
+	err = updateSystemPackages(database.DB, system, pkgByName)
 	assert.Nil(t, err)
 	assert.Equal(t, 3, installed)                                      // kernel, firefox, custom-package
 	assert.Equal(t, 2, installable)                                    // firefox, custom-package have updates
 	assert.Equal(t, 2, applicable)                                     // firefox, custom-package have updates
 	database.CheckEVRAsInDBSynced(t, 1, false, "12.0.1-1.fc31.x86_64") // lazy added package
 	database.CheckEVRAsInDB(t, 1, "1.2.3-1.fc33.x86_64")               // custom package is not ignored
-	database.CheckSystemPackages(t, system.RhAccountID, system.ID, 3)
-	database.DeleteSystemPackages(t, system.RhAccountID, system.ID)
+	database.CheckSystemPackages(t, system.Inventory.RhAccountID, system.InternalSystemID(), 3)
+	database.DeleteSystemPackages(t, system.Inventory.RhAccountID, system.InternalSystemID())
 	database.DeleteNewlyAddedPackages(t)
 }
 
@@ -58,21 +61,24 @@ func TestSystemPackageRemoval(t *testing.T) {
 	configure()
 	loadCache()
 
-	system := models.SystemPlatform{ID: 11, RhAccountID: 2}
-	database.CheckSystemPackages(t, system.RhAccountID, system.ID, 0)
+	system := &models.SystemPlatformV2{
+		Inventory: models.SystemInventory{ID: 11, RhAccountID: 2},
+		Patch:     models.SystemPatch{},
+	}
+	database.CheckSystemPackages(t, system.Inventory.RhAccountID, system.InternalSystemID(), 0)
 
 	vmaasData := vmaas.UpdatesV3Response{UpdateList: &map[string]*vmaas.UpdatesV3ResponseUpdateList{
 		"kernel-0:5.6.14-200.fc31.x86_64": {AvailableUpdates: &[]vmaas.UpdatesV3ResponseAvailableUpdates{}},
 	}}
 
-	pkgByName, installed, installable, applicable, err := lazySaveAndLoadPackages(&system, &vmaasData)
+	pkgByName, installed, installable, applicable, err := lazySaveAndLoadPackages(system, &vmaasData)
 	assert.Nil(t, err)
-	err = updateSystemPackages(database.DB, &system, pkgByName)
+	err = updateSystemPackages(database.DB, system, pkgByName)
 	assert.Nil(t, err)
 	assert.Equal(t, 1, installed)
 	assert.Equal(t, 0, installable)
 	assert.Equal(t, 0, applicable)
-	database.CheckSystemPackages(t, system.RhAccountID, system.ID, 1)
+	database.CheckSystemPackages(t, system.Inventory.RhAccountID, system.InternalSystemID(), 1)
 
 	// downgrade kernel
 	vmaasData = vmaas.UpdatesV3Response{UpdateList: &map[string]*vmaas.UpdatesV3ResponseUpdateList{
@@ -82,19 +88,19 @@ func TestSystemPackageRemoval(t *testing.T) {
 			EVRA:        utils.PtrString("0:5.6.14-200.fc31.x86_64"),
 		}}}}}
 
-	pkgByName, installed, installable, applicable, err = lazySaveAndLoadPackages(&system, &vmaasData)
+	pkgByName, installed, installable, applicable, err = lazySaveAndLoadPackages(system, &vmaasData)
 	assert.Nil(t, err)
-	err = updateSystemPackages(database.DB, &system, pkgByName)
+	err = updateSystemPackages(database.DB, system, pkgByName)
 	assert.Nil(t, err)
 	// only 1 package should be analyzed
 	assert.Equal(t, 1, installed)
 	assert.Equal(t, 1, installable)
 	assert.Equal(t, 1, applicable)
 	// previous kernel package needs to be deleted, we expect only 1 package in system_package2
-	database.CheckSystemPackages(t, system.RhAccountID, system.ID, 1)
+	database.CheckSystemPackages(t, system.Inventory.RhAccountID, system.InternalSystemID(), 1)
 
 	// cleanup
-	database.DeleteSystemPackages(t, system.RhAccountID, system.ID)
+	database.DeleteSystemPackages(t, system.Inventory.RhAccountID, system.InternalSystemID())
 	database.DeleteNewlyAddedPackages(t)
 }
 

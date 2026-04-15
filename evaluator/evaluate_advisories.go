@@ -34,7 +34,7 @@ var rhelRegexp = regexp.MustCompile("^RH.A-")
 
 // LazySaveAndLoadAdvisories lazy saves missing advisories from reported, loads stored ones from DB,
 // and evaluates changes between the two.
-func lazySaveAndLoadAdvisories(system *models.SystemPlatform, vmaasData *vmaas.UpdatesV3Response) (
+func lazySaveAndLoadAdvisories(system *models.SystemPlatformV2, vmaasData *vmaas.UpdatesV3Response) (
 	extendedAdvisoryMap, error) {
 	if !enableAdvisoryAnalysis {
 		utils.LogInfo("advisory analysis disabled, skipping lazy saving and loading")
@@ -44,12 +44,12 @@ func lazySaveAndLoadAdvisories(system *models.SystemPlatform, vmaasData *vmaas.U
 	tStart := time.Now()
 	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("advisories-lazy-save-and-load"))
 
-	err := lazySaveAdvisories(vmaasData, system.InventoryID)
+	err := lazySaveAdvisories(vmaasData, system.GetInventoryID())
 	if err != nil {
 		return nil, errors.Wrap(err, "Unable to store unknown advisories in DB")
 	}
 
-	stored, err := loadSystemAdvisories(database.DB, system.RhAccountID, system.ID)
+	stored, err := loadSystemAdvisories(database.DB, system.Inventory.RhAccountID, system.InternalSystemID())
 	if err != nil {
 		return nil, errors.Wrap(err, "Unable to load system advisories")
 	}
@@ -235,7 +235,7 @@ func getMissingAdvisories(advisoriesMap map[string]int) ([]string, error) {
 	return missingNames, nil
 }
 
-func storeAdvisoryData(tx *gorm.DB, system *models.SystemPlatform, advisoriesByName extendedAdvisoryMap) (
+func storeAdvisoryData(tx *gorm.DB, system *models.SystemPlatformV2, advisoriesByName extendedAdvisoryMap) (
 	SystemAdvisoryMap, error) {
 	if !enableAdvisoryAnalysis {
 		utils.LogInfo("advisory analysis disabled, skipping storing")
@@ -249,7 +249,7 @@ func storeAdvisoryData(tx *gorm.DB, system *models.SystemPlatform, advisoriesByN
 	}
 
 	// reload all after updates
-	systemAdvisoriesNew, err := loadSystemAdvisories(tx, system.RhAccountID, system.ID)
+	systemAdvisoriesNew, err := loadSystemAdvisories(tx, system.Inventory.RhAccountID, system.InternalSystemID())
 	if err != nil {
 		return nil, err
 	}
@@ -261,10 +261,10 @@ func storeAdvisoryData(tx *gorm.DB, system *models.SystemPlatform, advisoriesByN
 	return systemAdvisoriesNew, nil
 }
 
-func calcAdvisoryChanges(system *models.SystemPlatform, //nolint: funlen
+func calcAdvisoryChanges(system *models.SystemPlatformV2, //nolint: funlen
 	advisoriesByName extendedAdvisoryMap) []models.AdvisoryAccountData {
 	// If system is stale, we won't change any rows in advisory_account_data
-	if system.Stale {
+	if system.Inventory.Stale {
 		return []models.AdvisoryAccountData{}
 	}
 
@@ -274,7 +274,7 @@ func calcAdvisoryChanges(system *models.SystemPlatform, //nolint: funlen
 		case Remove:
 			aadMap[advisory.AdvisoryID] = models.AdvisoryAccountData{
 				AdvisoryID:         advisory.AdvisoryID,
-				RhAccountID:        system.RhAccountID,
+				RhAccountID:        system.Inventory.RhAccountID,
 				SystemsInstallable: -1,
 			}
 			if advisory.StatusID != APPLICABLE { // advisory is no longer applicable
@@ -290,7 +290,7 @@ func calcAdvisoryChanges(system *models.SystemPlatform, //nolint: funlen
 			if advisory.StatusID == INSTALLABLE {
 				aadMap[advisory.AdvisoryID] = models.AdvisoryAccountData{
 					AdvisoryID:         advisory.AdvisoryID,
-					RhAccountID:        system.RhAccountID,
+					RhAccountID:        system.Inventory.RhAccountID,
 					SystemsInstallable: 1,
 					// every installable advisory is also applicable advisory
 					SystemsApplicable: 1,
@@ -303,7 +303,7 @@ func calcAdvisoryChanges(system *models.SystemPlatform, //nolint: funlen
 					// where one would be one INSTALLABLE and the other APPLICABLE?
 					aadMap[advisory.AdvisoryID] = models.AdvisoryAccountData{
 						AdvisoryID:        advisory.AdvisoryID,
-						RhAccountID:       system.RhAccountID,
+						RhAccountID:       system.Inventory.RhAccountID,
 						SystemsApplicable: 1,
 					}
 				}
@@ -338,7 +338,7 @@ func upsertSystemAdvisories(tx *gorm.DB, advisoryObjs models.SystemAdvisoriesSli
 	return database.BulkInsert(tx, advisoryObjs)
 }
 
-func processAdvisories(system *models.SystemPlatform, advisoriesByName extendedAdvisoryMap) ([]int64,
+func processAdvisories(system *models.SystemPlatformV2, advisoriesByName extendedAdvisoryMap) ([]int64,
 	models.SystemAdvisoriesSlice) {
 	deleteIDs := make([]int64, 0, len(advisoriesByName))
 	advisoryObjs := make(models.SystemAdvisoriesSlice, 0, len(advisoriesByName))
@@ -353,8 +353,8 @@ func processAdvisories(system *models.SystemPlatform, advisoriesByName extendedA
 			fallthrough
 		case Add:
 			adv := models.SystemAdvisories{
-				RhAccountID: system.RhAccountID,
-				SystemID:    system.ID,
+				RhAccountID: system.Inventory.RhAccountID,
+				SystemID:    system.InternalSystemID(),
 				AdvisoryID:  advisory.AdvisoryID,
 				Advisory:    advisory.Advisory,
 				StatusID:    advisory.StatusID,
@@ -370,26 +370,26 @@ func processAdvisories(system *models.SystemPlatform, advisoriesByName extendedA
 		}
 	}
 	updatesCnt.WithLabelValues("installable").Add(float64(installableCnt))
-	utils.LogInfo("inventoryID", system.InventoryID, "installable", installableCnt, "installable advisories")
+	utils.LogInfo("inventoryID", system.GetInventoryID(), "installable", installableCnt, "installable advisories")
 	updatesCnt.WithLabelValues("applicable").Add(float64(applicableCnt))
-	utils.LogInfo("inventoryID", system.InventoryID, "applicable", applicableCnt, "applicable advisories")
+	utils.LogInfo("inventoryID", system.GetInventoryID(), "applicable", applicableCnt, "applicable advisories")
 	updatesCnt.WithLabelValues("patched").Add(float64(len(deleteIDs)))
-	utils.LogInfo("inventoryID", system.InventoryID, "fixed", len(deleteIDs), "fixed advisories")
+	utils.LogInfo("inventoryID", system.GetInventoryID(), "fixed", len(deleteIDs), "fixed advisories")
 	return deleteIDs, advisoryObjs
 }
 
-func updateSystemAdvisories(tx *gorm.DB, system *models.SystemPlatform,
+func updateSystemAdvisories(tx *gorm.DB, system *models.SystemPlatformV2,
 	advisoriesByName extendedAdvisoryMap) error {
 	deleteIDs, advisoryObjs := processAdvisories(system, advisoriesByName)
 
-	err := deleteOldSystemAdvisories(tx, system.RhAccountID, system.ID, deleteIDs)
+	err := deleteOldSystemAdvisories(tx, system.Inventory.RhAccountID, system.InternalSystemID(), deleteIDs)
 	if err != nil {
 		return err
 	}
 
 	// check wherther system has not been deleted in the meanwhile
 	// fixes 'insert or update on table "system_advisories_31" violates foreign key constraint "system_platform_id"'
-	if !validSystem(system.RhAccountID, system.ID) {
+	if !validSystem(system.Inventory.RhAccountID, system.InternalSystemID()) {
 		// system does not exist anymore, skip system_advisory insert
 		return nil
 	}
@@ -412,7 +412,11 @@ func loadSystemAdvisories(tx *gorm.DB, accountID int, systemID int64) (SystemAdv
 	return systemAdvisories, nil
 }
 
-func updateAdvisoryAccountData(tx *gorm.DB, system *models.SystemPlatform, advisoriesByName extendedAdvisoryMap) error {
+func updateAdvisoryAccountData(
+	tx *gorm.DB,
+	system *models.SystemPlatformV2,
+	advisoriesByName extendedAdvisoryMap,
+) error {
 	changes := calcAdvisoryChanges(system, advisoriesByName)
 
 	if len(changes) == 0 {

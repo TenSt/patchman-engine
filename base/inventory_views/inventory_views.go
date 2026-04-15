@@ -36,7 +36,7 @@ type InventoryViewsEvent struct {
 	Hosts     []InventoryViewsHost `json:"hosts"`
 }
 
-func MakeInventoryViewsEvent(tx *gorm.DB, orgID string, systems []models.SystemPlatform) (
+func MakeInventoryViewsEvent(tx *gorm.DB, orgID string, systems []models.SystemPlatformV2) (
 	InventoryViewsEvent, error) {
 	templates, err := FindSystemsTemplates(tx, systems)
 	if err != nil {
@@ -46,51 +46,52 @@ func MakeInventoryViewsEvent(tx *gorm.DB, orgID string, systems []models.SystemP
 	return InventoryViewsEvent{OrgID: orgID, Timestamp: time.Now().Format(time.RFC3339), Hosts: hosts}, nil
 }
 
-func MakeInventoryViewsHosts(systems []models.SystemPlatform,
+func MakeInventoryViewsHosts(systems []models.SystemPlatformV2,
 	templates map[int64]models.TemplateBase) []InventoryViewsHost {
 	hosts := make([]InventoryViewsHost, len(systems))
 	for i, system := range systems {
+		p := system.Patch
 		hosts[i] = InventoryViewsHost{
-			ID: system.InventoryID,
+			ID: system.Inventory.InventoryID,
 			Data: InventoryViewsHostData{
-				ApplicableRhsaCount: system.ApplicableAdvisorySecCountCache,
-				ApplicableRhbaCount: system.ApplicableAdvisoryBugCountCache,
-				ApplicableRheaCount: system.ApplicableAdvisoryEnhCountCache,
-				ApplicableOtherCount: system.ApplicableAdvisoryCountCache - system.ApplicableAdvisorySecCountCache -
-					system.ApplicableAdvisoryBugCountCache - system.ApplicableAdvisoryEnhCountCache,
-				InstallableRhsaCount: system.InstallableAdvisorySecCountCache,
-				InstallableRhbaCount: system.InstallableAdvisoryBugCountCache,
-				InstallableRheaCount: system.InstallableAdvisoryEnhCountCache,
-				InstallableOtherCount: system.InstallableAdvisoryCountCache - system.InstallableAdvisorySecCountCache -
-					system.InstallableAdvisoryBugCountCache - system.InstallableAdvisoryEnhCountCache,
-				PackagesInstalled:   system.PackagesInstalled,
-				PackagesInstallable: system.PackagesInstallable,
-				PackagesApplicable:  system.PackagesApplicable,
+				ApplicableRhsaCount: p.ApplicableAdvisorySecCountCache,
+				ApplicableRhbaCount: p.ApplicableAdvisoryBugCountCache,
+				ApplicableRheaCount: p.ApplicableAdvisoryEnhCountCache,
+				ApplicableOtherCount: p.ApplicableAdvisoryCountCache - p.ApplicableAdvisorySecCountCache -
+					p.ApplicableAdvisoryBugCountCache - p.ApplicableAdvisoryEnhCountCache,
+				InstallableRhsaCount: p.InstallableAdvisorySecCountCache,
+				InstallableRhbaCount: p.InstallableAdvisoryBugCountCache,
+				InstallableRheaCount: p.InstallableAdvisoryEnhCountCache,
+				InstallableOtherCount: p.InstallableAdvisoryCountCache - p.InstallableAdvisorySecCountCache -
+					p.InstallableAdvisoryBugCountCache - p.InstallableAdvisoryEnhCountCache,
+				PackagesInstalled:   p.PackagesInstalled,
+				PackagesInstallable: p.PackagesInstallable,
+				PackagesApplicable:  p.PackagesApplicable,
 			},
 		}
-		if system.TemplateID != nil {
-			template, ok := templates[*system.TemplateID]
+		if p.TemplateID != nil {
+			template, ok := templates[*p.TemplateID]
 			if ok {
 				hosts[i].Data.TemplateName = &template.Name
 				hosts[i].Data.TemplateUUID = &template.UUID
 			} else {
-				utils.LogWarn("template_id", system.TemplateID, "template not found")
+				utils.LogWarn("template_id", p.TemplateID, "template not found")
 			}
 		}
 	}
 	return hosts
 }
 
-func FindSystemsTemplates(tx *gorm.DB, systems []models.SystemPlatform) (map[int64]models.TemplateBase, error) {
+func FindSystemsTemplates(tx *gorm.DB, systems []models.SystemPlatformV2) (map[int64]models.TemplateBase, error) {
 	templateIDs := make([]int64, 0, len(systems))
 	if len(systems) == 0 {
 		return nil, nil
 	}
 	for _, system := range systems {
-		if system.TemplateID == nil {
+		if system.Patch.TemplateID == nil {
 			continue
 		}
-		templateIDs = append(templateIDs, *system.TemplateID)
+		templateIDs = append(templateIDs, *system.Patch.TemplateID)
 	}
 
 	if len(templateIDs) == 0 {
@@ -98,7 +99,7 @@ func FindSystemsTemplates(tx *gorm.DB, systems []models.SystemPlatform) (map[int
 	}
 	templates := make([]models.TemplateBase, 0, len(templateIDs))
 	q := tx.Model(&models.TemplateBase{}).
-		Where("rh_account_id = ? AND id IN (?)", systems[0].RhAccountID, templateIDs)
+		Where("rh_account_id = ? AND id IN (?)", systems[0].Inventory.RhAccountID, templateIDs)
 	err := q.Find(&templates).Error
 	if err != nil {
 		return nil, err
