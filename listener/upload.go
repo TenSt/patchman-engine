@@ -425,7 +425,7 @@ func storeOrUpdateSysPlatform(
 	host *Host,
 	colsToUpdate []string,
 ) error {
-	// Resolve system_inventory.id by account + inventory UUID (not via the system_platform view).
+	// Resolve system_inventory.id by account + inventory UUID
 	var existingID int64
 	if err := tx.Model(&models.SystemInventory{}).
 		Where("rh_account_id = ? AND inventory_id = ?::uuid", system.Inventory.RhAccountID, system.Inventory.InventoryID).

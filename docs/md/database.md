@@ -2,13 +2,17 @@
 
 ## Tables
 Main database tables description:
-- **system_platform** - stores info about registered systems. Mainly system inventory ID column (`inventory_id`) Red Hat account (`rh_account_id`) which system belongs to, JSON string with lists of installed packages, repos, modules (`vmaas_json`) needed for requesting VMaaS when evaluating system. It also stores aggregated results from evaluation - advisories counts by its types. Records are created and updated by both `listener` and `evaluator` components.
+- **system_inventory** — Partitioned table for the registered host / inventory profile: internal `id`, Insights `inventory_id`, `rh_account_id`, `vmaas_json` (packages, repos, modules for VMaaS), `yum_updates` and related checksums, staleness and culling timestamps, `display_name`, OS fields, tags/workspaces, and workload flags. **`system_repo`** (and similar link tables) use this internal `id` as the system key. The **listener** upserts rows here and relies on **system_inventory** for upload locks and unchanged detection; the **evaluator** reads it via a join to **system_patch**.
+- **system_patch** — Partitioned evaluation output for each system, keyed by `rh_account_id` and `system_id` where `system_id` equals **system_inventory.id** on the same account. Holds advisory and package count caches, `last_evaluation`, `third_party`, `template_id`, and related aggregates. Rows are created or updated by the **listener** together with **system_inventory**; the **evaluator** persists evaluation results here (not into a single legacy table).
+- **system_platform** (compatibility) — The schema may define **`system_platform` as a SQL VIEW** over `system_inventory` joined to `system_patch` on `system_inventory.id = system_patch.system_id` (and matching `rh_account_id`). A future migration could remove the view. Go code loads the combined shape as **SystemPlatformV2** (`Inventory` + `Patch`) rather than a monolithic `SystemPlatform` ORM model.
 - **advisory_metadata** - stores info about advisories (`description`, `summary`, `solution` etc.). It's synced and stored on trigger by `vmaas_sync` component. It allows to display detail information about the advisory.
-- **system_advisories** - stores info about advisories evaluated for particular systems (system - advisory M-N mapping table). Contains info when system advisory was firstly reported and patched (if so). Records are created and updated by `evaluator` component. It allows to display list of advisories related to a system.
+- **system_advisories** - stores info about advisories evaluated for particular systems (system - advisory M-N mapping table). `system_id` references **system_inventory.id**. Contains info when system advisory was firstly reported and patched (if so). Records are created and updated by `evaluator` component. It allows to display list of advisories related to a system.
 - **advisory_account_data** - stores info about all advisories detected within at least one system that belongs to a given account. So it provides overall statistics about system advisories displayed by the application.
 - **package_name** - names of the packages installed on systems
 - **package** - list of all packages versions, precisely all EVRAs (epoch-version-release-arch)
 - **system_package2** - list of packages installed on a system
 
 ## Schema
+The ERD image below may lag `database_admin/schema/create_schema.sql` (for example if it still shows **`system_platform`** as a base table while the physical tables are **system_inventory** and **system_patch**).
+
 ![](graphics/db_diagram.png)
