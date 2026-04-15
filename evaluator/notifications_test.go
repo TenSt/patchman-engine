@@ -175,11 +175,14 @@ func TestAdvisoriesNotificationAlreadyNotified(t *testing.T) {
 	}
 	defer database.DeleteAdvisoryAccountData(t, rhAccountID, advisoryIDs)
 
-	system := &models.SystemPlatform{
-		ID:          systemID,
-		RhAccountID: rhAccountID,
-		InventoryID: inventoryID,
-		DisplayName: "test-display-name",
+	system := &models.SystemPlatformV2{
+		Inventory: models.SystemInventory{
+			ID:          1,
+			RhAccountID: rhAccountID,
+			InventoryID: "00000000-0000-0000-0000-000000000001",
+			DisplayName: "display name",
+		},
+		Patch: models.SystemPatch{},
 	}
 	newAdvs := SystemAdvisoryMap{
 		"RH-1": {AdvisoryID: 1},
@@ -202,11 +205,14 @@ func TestAdvisoriesNotificationEmptyAdvisoryMap(t *testing.T) {
 	mockWriter := mqueue.MockKafkaWriter{}
 	notificationsPublisher = &mockWriter
 
-	system := &models.SystemPlatform{
-		ID:          systemID,
-		RhAccountID: rhAccountID,
-		InventoryID: inventoryID,
-		DisplayName: "test-display-name",
+	system := &models.SystemPlatformV2{
+		Inventory: models.SystemInventory{
+			ID:          1,
+			RhAccountID: rhAccountID,
+			InventoryID: "00000000-0000-0000-0000-000000000001",
+			DisplayName: "display name",
+		},
+		Patch: models.SystemPatch{},
 	}
 
 	// An empty map means there is nothing to query — no messages should be produced regardless.

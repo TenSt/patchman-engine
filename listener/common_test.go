@@ -93,7 +93,7 @@ func assertSystemNotInDB(t *testing.T) {
 func assertSystemCulled(t *testing.T) {
 	var systemCount int64
 	now := time.Now()
-	assert.Nil(t, database.DB.Model(models.SystemPlatform{}).
+	assert.Nil(t, database.DB.Model(models.SystemInventory{}).
 		Where("culled_timestamp < ?", now).
 		Where("inventory_id = ?::uuid", id).Count(&systemCount).Error)
 
