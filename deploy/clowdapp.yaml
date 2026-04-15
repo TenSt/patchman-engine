@@ -566,7 +566,8 @@ objects:
                  adv.applicable_systems AS applicable_systems
             FROM (SELECT sa.rh_account_id, sa.advisory_id, COUNT(*) as applicable_systems
                     FROM system_advisories sa
-                    JOIN system_platform sp ON sa.rh_account_id = sp.rh_account_id AND sa.system_id = sp.id
+                    JOIN system_inventory si ON sa.rh_account_id = si.rh_account_id AND sa.system_id = si.id
+                    JOIN system_patch spatch ON spatch.system_id = si.id AND spatch.rh_account_id = si.rh_account_id
                     GROUP BY sa.rh_account_id, sa.advisory_id
                  ) as adv
             JOIN rh_account ra ON ra.id = adv.rh_account_id
@@ -597,13 +598,14 @@ objects:
         chunksize: ${{FLOORIST_HMS_CHUNKSIZE}}
         query: >-
           SELECT a.org_id,
-                 count(sp.inventory_id),
+                 count(si.inventory_id),
                  t.uuid::text as template_uuid, t.environment_id, t.name as template_name,
                  CURRENT_DATE as collected_at 
-            FROM system_platform sp
-            JOIN rh_account a ON a.id = sp.rh_account_id
-            LEFT JOIN template t on t.id = sp.template_id
-            where sp.last_upload >= date_trunc('month', CURRENT_DATE)
+            FROM system_inventory si
+            JOIN system_patch spatch ON spatch.system_id = si.id AND spatch.rh_account_id = si.rh_account_id
+            JOIN rh_account a ON a.id = si.rh_account_id
+            LEFT JOIN template t ON t.id = spatch.template_id AND t.rh_account_id = spatch.rh_account_id
+            WHERE si.last_upload >= date_trunc('month', CURRENT_DATE)
             group by a.org_id, template_uuid, t.environment_id, template_name
             ORDER BY a.org_id;
 
