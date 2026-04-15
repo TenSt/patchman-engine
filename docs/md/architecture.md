@@ -2,8 +2,8 @@
 The project is written as a set of communicating containers. It allows to scale different parts of the application
 according to needs. It also increases application robustness, because even if one component have some issues (errors, down times), the others are not impacted with that work.
 
-The components are `manager`, `listener`, `evaluator-{upload,recalc}`, `vmaas_sync`,`database` and
-`dataase_admin`.
+The components are `manager`, `listener`, `evaluator-{upload,recalc}`, `vmaas_sync`, `database` and
+`database_admin`.
 
 ### Components
 - **manager** - serves information about evaluated systems for a given account via REST API. It allows to display:
@@ -16,17 +16,14 @@ on [this service](https://github.com/RedHatInsights/insights-rbac), however it c
 `ENABLE_RBAC=no`. See [component environment variables](../../conf/manager.env)
 
 - **listener** - connects to the Kafka service, and listens for messages about newly uploaded archives. When a new
-archive is uploaded, it updates or creates a record in the `system_platform` database table. Specifically it updates
-`vmaas_json` column with installed packages list, repos and modules. It also updates info about repositories registered
-for that system, pairing database tables `repo` and `system_platform` using table `system_repo`. After that it sends a
+archive is uploaded, it upserts **`system_inventory`** (including `vmaas_json` with installed packages, repos, and modules) and the matching **`system_patch`** row; it does not write to a monolithic **`system_platform`** table (that name may exist only as a **SQL VIEW** for compatibility). Upload locks and checksum logic apply to **`system_inventory`**. It registers repositories for the system by pairing `repo` with the internal system id (**`system_inventory.id`**) through **`system_repo`**. After that it sends a
 Kafka message (`patchman.evaluator.upload` topic) to evaluate the system with the `evaluator-upload` component. This
 component also handles system deleting events (`platform.inventory.events` Kafka topic).
 See [component environment variables](../../conf/listener.env)
 
 - **evaluator-upload** - connects to the Kafka service (`patchman.evaluator.upload` topic) and listens for evaluation
 requests from the `listener` component. For each received Kafka message it evaluates system with ID contained in the
-message. As a evaluation result it updates several database tables (`system_advisories`, `system_platform`,
-`advisory_account_data`). Evaluation is scaled on two levels, firstly with multiple replicas (more pods) and secondary
+message. It loads each system by joining **`system_inventory`** and **`system_patch`**. As an evaluation result it updates **`system_advisories`** (referencing **`system_inventory.id`**), **`system_patch`** (evaluation caches, `last_evaluation`, and related fields), and **`advisory_account_data`**. Evaluation is scaled on two levels, firstly with multiple replicas (more pods) and secondary
 with multiple goroutines within single pod (set by `CONSUMER_COUNT` environment variable).
 See [component environment variables](../../conf/evaluator_upload.env)
 
