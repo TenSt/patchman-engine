@@ -39,11 +39,10 @@ func TestGetAllInventoryIDs(t *testing.T) {
 	inventoryAIDs, err := getAllInventoryIDs()
 	assert.Nil(t, err)
 
-	// Mirror getAllInventoryIDs: only rows with a system_patch; same join as send_messages.go.
+	// Mirror getAllInventoryIDs: all system_inventory rows.
 	var systems []*models.SystemInventory
 	assert.NoError(t, database.DB.Table("system_inventory AS si").
 		Select("si.*").
-		Joins("JOIN system_patch sp ON si.id = sp.system_id AND si.rh_account_id = sp.rh_account_id").
 		Find(&systems).Error)
 	assert.Equal(t, len(inventoryAIDs), len(systems))
 
