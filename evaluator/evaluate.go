@@ -560,24 +560,6 @@ func incrementAdvisoryTypeCounts(advisory models.AdvisoryMetadata, enhCount, bug
 	}
 }
 
-// systemPatchEvaluatorUpdateColumns lists DB columns on system_patch that evaluate may update.
-// Keep in sync with database_admin/schema/create_schema.sql (system_patch).
-var systemPatchEvaluatorUpdateColumns = map[string]struct{}{
-	"last_evaluation":                      {},
-	"installable_advisory_count_cache":     {},
-	"installable_advisory_enh_count_cache": {},
-	"installable_advisory_bug_count_cache": {},
-	"installable_advisory_sec_count_cache": {},
-	"applicable_advisory_count_cache":      {},
-	"applicable_advisory_enh_count_cache":  {},
-	"applicable_advisory_bug_count_cache":  {},
-	"applicable_advisory_sec_count_cache":  {},
-	"packages_installed":                   {},
-	"packages_installable":                 {},
-	"packages_applicable":                  {},
-	"third_party":                          {},
-}
-
 // nolint: funlen
 func updateSystemPlatform(tx *gorm.DB, system *models.SystemPlatformV2,
 	advisories SystemAdvisoryMap, installed, installable, applicable int) error {
@@ -631,12 +613,6 @@ func updateSystemPlatform(tx *gorm.DB, system *models.SystemPlatformV2,
 
 	if enableRepoAnalysis {
 		data["third_party"] = system.Patch.ThirdParty
-	}
-
-	for k := range data {
-		if _, ok := systemPatchEvaluatorUpdateColumns[k]; !ok {
-			return errors.Errorf("updateSystemPlatform: unknown system_patch column %q", k)
-		}
 	}
 
 	err := tx.Model(&models.SystemPatch{}).
