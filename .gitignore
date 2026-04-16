@@ -5,3 +5,9 @@
 coverage.txt
 vendor
 docs/swagger*
+
+# Local Go caches (avoid polluting ./... in CI)
+gomodcache/
+gocache/
+gopath/
+.cache/
