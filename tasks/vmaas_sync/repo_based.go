@@ -50,7 +50,6 @@ func getRepoBasedInventoryIDs(repos []string, packages []string) ([]mqueue.EvalD
 	}
 
 	query := tasks.CancelableDB().Table("system_inventory si").
-		Joins("JOIN system_patch sp ON si.id = sp.system_id AND si.rh_account_id = sp.rh_account_id").
 		Joins("JOIN system_repo sr ON si.rh_account_id = sr.rh_account_id AND si.id = sr.system_id").
 		Joins("JOIN repo ON repo.id = sr.repo_id").
 		Joins("JOIN rh_account ra ON ra.id = si.rh_account_id").

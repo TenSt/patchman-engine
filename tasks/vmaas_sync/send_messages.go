@@ -40,7 +40,6 @@ func getAllInventoryIDs() ([]mqueue.EvalData, error) {
 	var inventoryAIDs []mqueue.EvalData
 	err := tasks.CancelableDB().Table("system_inventory si").
 		Select("si.inventory_id, si.rh_account_id, ra.org_id").
-		Joins("JOIN system_patch sp ON si.id = sp.system_id AND si.rh_account_id = sp.rh_account_id").
 		Joins("JOIN rh_account ra on ra.id = si.rh_account_id").
 		Order("ra.id").
 		Scan(&inventoryAIDs).Error
