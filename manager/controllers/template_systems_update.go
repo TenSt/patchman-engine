@@ -141,7 +141,7 @@ func assignTemplateSystems(c *gin.Context, db *gorm.DB, accountID int, template 
 
 	// TODO: Revisit migration 145 manager privileges on system_inventory/system_patch; they were tied to
 	// system_platform view/update-trigger work and may be narrower now that template_id is updated on system_patch.
-	siSub := tx.Session(&gorm.Session{}).Model(&models.SystemInventory{}).
+	siSub := tx.Model(&models.SystemInventory{}).
 		Select("id").
 		Where("rh_account_id = ? AND inventory_id IN (?::uuid)", accountID, inventoryIDs)
 	tx = tx.Model(&models.SystemPatch{}).
