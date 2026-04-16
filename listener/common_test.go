@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const id = "99c0ffee-0000-0000-0000-0000c0ffee99"
@@ -80,6 +82,68 @@ func assertSystemInDB(t *testing.T, inventoryID string, rhAccountID *int, report
 	assert.True(t, system.LastUpdated.After(now), "Last updated")
 	assert.True(t, system.UnchangedSince.After(now), "Unchanged since")
 	assert.True(t, system.LastUpload.After(now), "Last upload")
+}
+
+// assertSystemInventoryProfileMatchesHost checks host-derived system_inventory columns written by
+// storeOrUpdateSysPlatform (must stay in sync on ON CONFLICT DO UPDATE, not only on first insert).
+// nolint: unparam
+func assertSystemInventoryProfileMatchesHost(t *testing.T, inventoryID string, host *Host) {
+	t.Helper()
+	var inv models.SystemInventory
+	require.NoError(t, database.DB.Where("inventory_id = ?::uuid", inventoryID).First(&inv).Error)
+
+	assert.JSONEq(t, string(utils.MarshalNilToJSONB(host.Tags)), string(inv.Tags))
+
+	require.NotNil(t, inv.Workspaces)
+	assert.Equal(t, host.Groups, []inventory.Group(*inv.Workspaces))
+
+	if host.SystemProfile.OperatingSystem.Name != "" {
+		require.NotNil(t, inv.OSName)
+		assert.Equal(t, host.SystemProfile.OperatingSystem.Name, *inv.OSName)
+	} else {
+		assert.Nil(t, inv.OSName)
+	}
+
+	require.NotNil(t, inv.OSMajor)
+	assert.Equal(t, host.SystemProfile.OperatingSystem.Major, *inv.OSMajor)
+	require.NotNil(t, inv.OSMinor)
+	assert.Equal(t, host.SystemProfile.OperatingSystem.Minor, *inv.OSMinor)
+
+	if host.SystemProfile.Rhsm.Version != "" {
+		require.NotNil(t, inv.RhsmVersion)
+		assert.Equal(t, host.SystemProfile.Rhsm.Version, *inv.RhsmVersion)
+	} else {
+		assert.Nil(t, inv.RhsmVersion)
+	}
+
+	assert.Equal(t, host.SystemProfile.Workloads.Sap.SapSystem, inv.SapWorkload)
+	assert.ElementsMatch(t, pq.StringArray(host.SystemProfile.Workloads.Sap.Sids), inv.SapWorkloadSIDs)
+
+	expAnsible := host.SystemProfile.Workloads.Ansible.ControllerVersion != ""
+	assert.Equal(t, expAnsible, inv.AnsibleWorkload)
+	if host.SystemProfile.Workloads.Ansible.ControllerVersion != "" {
+		require.NotNil(t, inv.AnsibleWorkloadControllerVersion)
+		assert.Equal(t, host.SystemProfile.Workloads.Ansible.ControllerVersion,
+			*inv.AnsibleWorkloadControllerVersion)
+	} else {
+		assert.Nil(t, inv.AnsibleWorkloadControllerVersion)
+	}
+
+	expMssql := host.SystemProfile.Workloads.Mssql.Version != ""
+	assert.Equal(t, expMssql, inv.MssqlWorkload)
+	if host.SystemProfile.Workloads.Mssql.Version != "" {
+		require.NotNil(t, inv.MssqlWorkloadVersion)
+		assert.Equal(t, host.SystemProfile.Workloads.Mssql.Version, *inv.MssqlWorkloadVersion)
+	} else {
+		assert.Nil(t, inv.MssqlWorkloadVersion)
+	}
+
+	if host.SystemProfile.OwnerID != nil {
+		require.NotNil(t, inv.SubscriptionManagerID)
+		assert.Equal(t, *host.SystemProfile.OwnerID, *inv.SubscriptionManagerID)
+	} else {
+		assert.Nil(t, inv.SubscriptionManagerID)
+	}
 }
 
 func assertSystemNotInDB(t *testing.T) {
@@ -190,6 +254,7 @@ func assertSystemReposInDB(t *testing.T, systemID int64, repos []string) {
 	assert.Equal(t, c, int64(len(repos)))
 }
 
+// nolint: unparam
 func assertYumUpdatesInDB(t *testing.T, inventoryID string, yumUpdates *YumUpdates) {
 	var system models.SystemInventory
 	assert.NoError(t, database.DB.Where("inventory_id = ?::uuid", inventoryID).Find(&system).Error)

@@ -120,6 +120,88 @@ func TestUpdateSystemPlatform(t *testing.T) {
 	deleteData(t)
 }
 
+func TestUpdateSystemPlatformUpdatesSubscriptionManagerIDWhenOwnerIDChanges(t *testing.T) {
+	utils.SkipWithoutDB(t)
+	core.SetupTestEnvironment()
+	configure()
+
+	deleteData(t)
+	acc := getOrCreateTestAccount(t)
+	correctTimestamp, err := time.Parse(types.Rfc3339NoTz, "2018-09-22T12:00:00-04:00")
+	require.NoError(t, err)
+	correctTime := types.Rfc3339Timestamp(correctTimestamp)
+
+	modulesSlice := []vmaas.UpdatesV3RequestModulesList{}
+	reqProfile := vmaas.UpdatesV3Request{
+		PackageList:    []string{"kernel-0:54321-1.rhel8.x86_64"},
+		RepositoryList: []string{"repo1", "repo2", "repo3"},
+		ModulesList:    &modulesSlice,
+		Releasever:     utils.PtrString("7Server"),
+		Basearch:       utils.PtrString("x86_64"),
+	}
+
+	ev := createTestUploadEvent(id, id, "puptoo", true, false, "created")
+	ev.Host.StaleTimestamp = &correctTime
+	ownerID1 := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	ev.Host.SystemProfile.OwnerID = &ownerID1
+
+	_, err = updateSystemPlatform(database.DB, acc, &ev.Host, nil, &reqProfile)
+	require.NoError(t, err)
+	assertSystemInventoryProfileMatchesHost(t, id, &ev.Host)
+
+	ownerID2 := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	ev.Host.SystemProfile.OwnerID = &ownerID2
+
+	_, err = updateSystemPlatform(database.DB, acc, &ev.Host, nil, &reqProfile)
+	require.NoError(t, err)
+	assertSystemInventoryProfileMatchesHost(t, id, &ev.Host)
+
+	ev.Host.SystemProfile.OwnerID = nil
+	_, err = updateSystemPlatform(database.DB, acc, &ev.Host, nil, &reqProfile)
+	require.NoError(t, err)
+	assertSystemInventoryProfileMatchesHost(t, id, &ev.Host)
+
+	deleteData(t)
+}
+
+func TestUpdateSystemPlatformRefreshesInventoryProfileOnConflict(t *testing.T) {
+	utils.SkipWithoutDB(t)
+	core.SetupTestEnvironment()
+	configure()
+
+	deleteData(t)
+	acc := getOrCreateTestAccount(t)
+	correctTimestamp, err := time.Parse(types.Rfc3339NoTz, "2018-09-22T12:00:00-04:00")
+	require.NoError(t, err)
+	correctTime := types.Rfc3339Timestamp(correctTimestamp)
+	modulesSlice := []vmaas.UpdatesV3RequestModulesList{}
+	reqProfile := vmaas.UpdatesV3Request{
+		PackageList:    []string{"kernel-0:54321-1.rhel8.x86_64"},
+		RepositoryList: []string{"repo1", "repo2", "repo3"},
+		ModulesList:    &modulesSlice,
+		Releasever:     utils.PtrString("7Server"),
+		Basearch:       utils.PtrString("x86_64"),
+	}
+	ev := createTestUploadEvent(id, id, "puptoo", true, false, "created")
+	ev.Host.StaleTimestamp = &correctTime
+	_, err = updateSystemPlatform(database.DB, acc, &ev.Host, nil, &reqProfile)
+	require.NoError(t, err)
+	assertSystemInventoryProfileMatchesHost(t, id, &ev.Host)
+
+	ev.Host.Tags = []byte(`{"namespace": "insights-client","key": "env","value": "staging"}`)
+	ev.Host.SystemProfile.OperatingSystem.Minor = 5
+	ev.Host.SystemProfile.Rhsm.Version = "8.5"
+	ev.Host.SystemProfile.Workloads.Sap.Sids = []string{"sid9"}
+	ev.Host.SystemProfile.Workloads.Ansible.ControllerVersion = "2.13.0"
+	ev.Host.SystemProfile.Workloads.Mssql.Version = "16.0"
+
+	_, err = updateSystemPlatform(database.DB, acc, &ev.Host, nil, &reqProfile)
+	require.NoError(t, err)
+	assertSystemInventoryProfileMatchesHost(t, id, &ev.Host)
+
+	deleteData(t)
+}
+
 func TestUploadHandlerCreatedSystem(t *testing.T) {
 	eventTypes := []string{"created", "updated"}
 	for _, eventType := range eventTypes {
@@ -319,6 +401,7 @@ func TestFixEpelRepos(t *testing.T) {
 	assert.Equal(t, "epel-9", reposContent[0])
 }
 
+// nolint: funlen
 func TestUpdateSystemPlatformYumUpdates(t *testing.T) {
 	utils.SkipWithoutDB(t)
 	core.SetupTestEnvironment()
@@ -338,19 +421,43 @@ func TestUpdateSystemPlatformYumUpdates(t *testing.T) {
 
 	req := vmaas.UpdatesV3Request{}
 
-	_, err = updateSystemPlatform(database.DB, accountID1, createTestInvHost(t), yumUpdates, &req)
+	_, err = updateSystemPlatform(database.DB, accountID1, &hostEvent.Host, yumUpdates, &req)
 	assert.Nil(t, err)
 
 	reporterID1 := 1
 	assertSystemInDB(t, id, &accountID1, &reporterID1)
 	assertReposInDB(t, req.RepositoryList)
 	assertYumUpdatesInDB(t, id, yumUpdates)
+	assertSystemInventoryProfileMatchesHost(t, id, &hostEvent.Host)
 
-	// check that yumUpdates has been updated
+	// check that yumUpdates has been updated (keep the same Host so profile columns are not wiped)
 	yumUpdates.RawParsed = []byte("{}")
-	_, err = updateSystemPlatform(database.DB, accountID1, createTestInvHost(t), yumUpdates, &req)
+	_, err = updateSystemPlatform(database.DB, accountID1, &hostEvent.Host, yumUpdates, &req)
 	assert.Nil(t, err)
 	assertYumUpdatesInDB(t, id, yumUpdates)
+	assertSystemInventoryProfileMatchesHost(t, id, &hostEvent.Host)
+
+	hostEvent.Host.Tags = []byte(`{"namespace": "insights-client","key": "env","value": "staging"}`)
+	hostEvent.Host.SystemProfile.OperatingSystem.Minor = 6
+	hostEvent.Host.SystemProfile.Rhsm.Version = "8.6"
+	hostEvent.Host.SystemProfile.Workloads.Sap.Sids = []string{"sid-yum-test"}
+	hostEvent.Host.SystemProfile.Workloads.Ansible.ControllerVersion = "2.14.0"
+	hostEvent.Host.SystemProfile.Workloads.Mssql.Version = "17.0"
+	_, err = updateSystemPlatform(database.DB, accountID1, &hostEvent.Host, yumUpdates, &req)
+	assert.Nil(t, err)
+	assertYumUpdatesInDB(t, id, yumUpdates)
+	assertSystemInventoryProfileMatchesHost(t, id, &hostEvent.Host)
+
+	// Clear workload-related profile fields and verify ON CONFLICT updates clear them in DB.
+	hostEvent.Host.SystemProfile.Rhsm.Version = ""
+	hostEvent.Host.SystemProfile.Workloads.Sap.SapSystem = false
+	hostEvent.Host.SystemProfile.Workloads.Sap.Sids = nil
+	hostEvent.Host.SystemProfile.Workloads.Ansible.ControllerVersion = ""
+	hostEvent.Host.SystemProfile.Workloads.Mssql.Version = ""
+	_, err = updateSystemPlatform(database.DB, accountID1, &hostEvent.Host, yumUpdates, &req)
+	assert.Nil(t, err)
+	assertYumUpdatesInDB(t, id, yumUpdates)
+	assertSystemInventoryProfileMatchesHost(t, id, &hostEvent.Host)
 
 	deleteData(t)
 }
