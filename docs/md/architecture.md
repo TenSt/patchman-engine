@@ -16,7 +16,7 @@ on [this service](https://github.com/RedHatInsights/insights-rbac), however it c
 `ENABLE_RBAC=no`. See [component environment variables](../../conf/manager.env)
 
 - **listener** - connects to the Kafka service, and listens for messages about newly uploaded archives. When a new
-archive is uploaded, it upserts **`system_inventory`** (including `vmaas_json` with installed packages, repos, and modules) and the matching **`system_patch`** row; it does not write to a monolithic **`system_platform`** table (that name may exist only as a **SQL VIEW** for compatibility). Upload locks and checksum logic apply to **`system_inventory`**. It registers repositories for the system by pairing `repo` with the internal system id (**`system_inventory.id`**) through **`system_repo`**. After that it sends a
+archive is uploaded, it upserts **`system_inventory`** (including `vmaas_json` with installed packages, repos, and modules) and the matching **`system_patch`** row. Upload locks and checksum logic apply to **`system_inventory`**. It registers repositories for the system by pairing `repo` with the internal system id (**`system_inventory.id`**) through **`system_repo`**. After that it sends a
 Kafka message (`patchman.evaluator.upload` topic) to evaluate the system with the `evaluator-upload` component. This
 component also handles system deleting events (`platform.inventory.events` Kafka topic).
 See [component environment variables](../../conf/listener.env)
