@@ -358,24 +358,39 @@ func updateSystemPlatform(tx *gorm.DB, accountID int, host *Host,
 	isBootc := len(host.SystemProfile.BootcStatus.Booted.Image) > 0
 
 	updatesReqJSONString := string(updatesReqJSON)
+	hostWorkspaces := inventory.Groups(host.Groups)
 	systemPlatform := &models.SystemPlatformV2{
 		Inventory: models.SystemInventory{
-			InventoryID:           inventoryID,
-			RhAccountID:           accountID,
-			DisplayName:           displayName,
-			VmaasJSON:             utils.EmptyToNil(&updatesReqJSONString),
-			JSONChecksum:          utils.EmptyToNil(&jsonChecksum),
-			LastUpload:            host.GetLastUpload(),
-			StaleTimestamp:        host.StaleTimestamp.Time(),
-			StaleWarningTimestamp: host.StaleWarningTimestamp.Time(),
-			CulledTimestamp:       host.CulledTimestamp.Time(),
-			ReporterID:            getReporterID(host.Reporter),
-			YumUpdates:            yumUpdates.GetRawParsed(),
-			YumChecksum:           utils.EmptyToNil(&yumChecksum),
-			SatelliteManaged:      host.SystemProfile.SatelliteManaged,
-			BuiltPkgcache:         yumUpdates.GetBuiltPkgcache(),
-			Arch:                  host.SystemProfile.Arch,
-			Bootc:                 isBootc,
+			InventoryID:                      inventoryID,
+			RhAccountID:                      accountID,
+			DisplayName:                      displayName,
+			Created:                          host.Created,
+			Tags:                             utils.MarshalNilToJSONB(host.Tags),
+			Workspaces:                       &hostWorkspaces,
+			VmaasJSON:                        utils.EmptyToNil(&updatesReqJSONString),
+			JSONChecksum:                     utils.EmptyToNil(&jsonChecksum),
+			LastUpload:                       host.GetLastUpload(),
+			StaleTimestamp:                   host.StaleTimestamp.Time(),
+			StaleWarningTimestamp:            host.StaleWarningTimestamp.Time(),
+			CulledTimestamp:                  host.CulledTimestamp.Time(),
+			ReporterID:                       getReporterID(host.Reporter),
+			YumUpdates:                       yumUpdates.GetRawParsed(),
+			YumChecksum:                      utils.EmptyToNil(&yumChecksum),
+			SatelliteManaged:                 host.SystemProfile.SatelliteManaged,
+			BuiltPkgcache:                    yumUpdates.GetBuiltPkgcache(),
+			Arch:                             host.SystemProfile.Arch,
+			Bootc:                            isBootc,
+			OSName:                           utils.EmptyToNil(&host.SystemProfile.OperatingSystem.Name),
+			OSMajor:                          &host.SystemProfile.OperatingSystem.Major,
+			OSMinor:                          &host.SystemProfile.OperatingSystem.Minor,
+			RhsmVersion:                      utils.EmptyToNil(&host.SystemProfile.Rhsm.Version),
+			SubscriptionManagerID:            host.SystemProfile.OwnerID,
+			SapWorkload:                      host.SystemProfile.Workloads.Sap.SapSystem,
+			SapWorkloadSIDs:                  pq.StringArray(host.SystemProfile.Workloads.Sap.Sids),
+			AnsibleWorkload:                  host.SystemProfile.Workloads.Ansible.ControllerVersion != "",
+			AnsibleWorkloadControllerVersion: utils.EmptyToNil(&host.SystemProfile.Workloads.Ansible.ControllerVersion), // nolint:lll
+			MssqlWorkload:                    host.SystemProfile.Workloads.Mssql.Version != "",
+			MssqlWorkloadVersion:             utils.EmptyToNil(&host.SystemProfile.Workloads.Mssql.Version),
 		},
 		Patch: models.SystemPatch{
 			RhAccountID: accountID,
@@ -409,7 +424,7 @@ func updateSystemPlatform(tx *gorm.DB, accountID int, host *Host,
 		colsToUpdate = append(colsToUpdate, "yum_updates", "yum_checksum")
 	}
 
-	if err := storeOrUpdateSysPlatform(tx, systemPlatform, host, colsToUpdate); err != nil {
+	if err := storeOrUpdateSysPlatform(tx, systemPlatform, colsToUpdate); err != nil {
 		return nil, errors.Wrap(err, "Unable to save or update system in database")
 	}
 
@@ -435,7 +450,6 @@ func updateSystemPlatform(tx *gorm.DB, accountID int, host *Host,
 func storeOrUpdateSysPlatform(
 	tx *gorm.DB,
 	system *models.SystemPlatformV2,
-	host *Host,
 	colsToUpdate []string,
 ) error {
 	// Resolve system_inventory.id by account + inventory UUID
@@ -455,22 +469,6 @@ func storeOrUpdateSysPlatform(
 			{Name: "unchanged_since"},
 		},
 	})
-
-	system.Inventory.Created = host.Created
-	system.Inventory.Tags = utils.MarshalNilToJSONB(host.Tags)
-	hostWorkspaces := inventory.Groups(host.Groups)
-	system.Inventory.Workspaces = &hostWorkspaces
-	system.Inventory.OSName = utils.EmptyToNil(&host.SystemProfile.OperatingSystem.Name)
-	system.Inventory.OSMajor = &host.SystemProfile.OperatingSystem.Major
-	system.Inventory.OSMinor = &host.SystemProfile.OperatingSystem.Minor
-	system.Inventory.RhsmVersion = utils.EmptyToNil(&host.SystemProfile.Rhsm.Version)
-	system.Inventory.SubscriptionManagerID = host.SystemProfile.OwnerID
-	system.Inventory.SapWorkload = host.SystemProfile.Workloads.Sap.SapSystem
-	system.Inventory.SapWorkloadSIDs = pq.StringArray(host.SystemProfile.Workloads.Sap.Sids)
-	system.Inventory.AnsibleWorkload = host.SystemProfile.Workloads.Ansible.ControllerVersion != ""
-	system.Inventory.AnsibleWorkloadControllerVersion = utils.EmptyToNil(&host.SystemProfile.Workloads.Ansible.ControllerVersion) // nolint:lll
-	system.Inventory.MssqlWorkload = host.SystemProfile.Workloads.Mssql.Version != ""
-	system.Inventory.MssqlWorkloadVersion = utils.EmptyToNil(&host.SystemProfile.Workloads.Mssql.Version)
 
 	err := database.OnConflictUpdateMulti(txi, []string{"rh_account_id", "inventory_id"}, colsToUpdate...).
 		Create(&system.Inventory).Error
