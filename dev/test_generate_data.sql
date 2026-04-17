@@ -9,7 +9,7 @@ create table if not exists _const (
 truncate table _const ;
 insert into _const values           -- counts in prod 2022/02
     ('accounts',   50),             --  50k     -- number of rh_accounts
-    ('systems',    7500),           -- 750k     -- number of systems(_platform)
+    ('systems',    10),           -- 750k     -- number of system_inventory rows (each with system_patch)
     ('advisories', 320),            --  50k     -- number of advisory_metadata
     ('repos',      350),            --  55k     -- number of repos
     ('package_names', 300),         --  58k     -- number of package_name
@@ -76,10 +76,10 @@ $$
 ;
 
 
--- generate systems
+-- generate systems (system_inventory + system_patch per host)
 -- duration: 55s / 1M systems (on RDS)
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-alter sequence system_platform_id_seq restart with 1;
+alter sequence system_inventory_id_seq restart with 1;
 do $$
   declare
     cnt int := 0;
@@ -90,11 +90,12 @@ do $$
     rnd float;
     json_data text[];
     json_hash text[];
-    json_rnd int;
     rnd_date1 timestamp with time zone;
     rnd_date2 timestamp with time zone;
+    acc_id int;
+    new_id bigint;
+    ji int;
   begin
-    --select count(*) into cnt from system_platform;
     select val into wanted from _const where key = 'systems';
     select val into progress from _const where key = 'progress_pct';
     select count(*) into rh_accounts from rh_account;
@@ -105,21 +106,27 @@ do $$
         rnd := random();
         rnd_date1 := now() - make_interval(days => (rnd*30)::int);
         rnd_date2 := rnd_date1 + make_interval(days => (rnd*10)::int);
-        insert into system_platform
+        acc_id := trunc(rnd*rh_accounts)+1;
+        ji := trunc(rnd*3)+1;
+        insert into system_inventory
             (inventory_id, display_name, rh_account_id, vmaas_json, json_checksum,
-             last_updated, unchanged_since, last_upload, last_evaluation,
+             last_upload, arch, tags, created, os_name, os_major, rhsm_version)
+        values
+            (gen_uuid, gen_uuid::text, acc_id, json_data[ji], json_hash[ji],
+             rnd_date2, 'x86_64', '[]'::jsonb, rnd_date1, 'RHEL', 8, '8.0')
+        returning id into new_id;
+        insert into system_patch
+            (rh_account_id, system_id, last_evaluation,
              packages_installed, packages_installable, packages_applicable)
         values
-            (gen_uuid, gen_uuid, trunc(rnd*rh_accounts)+1, json_data[trunc(rnd*3)], json_hash[trunc(rnd*3)],
-             rnd_date2, rnd_date1, rnd_date2, rnd_date2,
-             trunc(rnd*1000), trunc(rnd*50), trunc(rnd*50))
-        on conflict do nothing;
-        if mod(cnt, (wanted*progress/100)::int) = 0 then
-            raise notice 'created % system_platforms', cnt;
+            (acc_id, new_id, rnd_date2,
+             trunc(rnd*1000), trunc(rnd*50), trunc(rnd*50));
+        if mod(cnt, greatest(1, ceil((wanted::numeric * progress) / 100.0)::int)) = 0 then
+            raise notice 'created % systems (inventory + patch)', cnt;
         end if;
         cnt := cnt + 1;
     end loop;
-    raise notice 'created % system_platforms', wanted;
+    raise notice 'created % systems (inventory + patch)', wanted;
   end;
 $$
 ;
@@ -182,11 +189,11 @@ do $$
     select val into adv_per_system from _const where key = 'adv_per_system';
     select val * adv_per_system into wanted from _const where key = 'systems';
     select val into progress from _const where key = 'progress_pct';
-    select count(*) into systems from system_platform;
+    select count(*) into systems from system_inventory;
     select count(*) into advs from advisory_metadata;
     select count(*) into stat from status;
     <<systems>>
-    for row in select rh_account_id, id from system_platform
+    for row in select rh_account_id, id from system_inventory
     loop
       -- assign random 0-2*adv_per_system advisories to system
       rnd := random() * 2 * adv_per_system;
@@ -204,7 +211,7 @@ do $$
       cnt := cnt + rnd::int;
       if cnt > nextpct then
           raise notice 'created % system_advisories', cnt;
-          nextpct := nextpct + (wanted*progress/100)::int;
+          nextpct := nextpct + greatest(1, ceil((wanted::numeric * progress) / 100.0)::int);
       end if;
       exit systems when cnt > wanted;
     end loop;  -- <<systems>>
@@ -252,10 +259,10 @@ do $$
     select val into repo_per_system from _const where key = 'repo_per_system';
     select val * repo_per_system into wanted from _const where key = 'systems';
     select val into progress from _const where key = 'progress_pct';
-    select count(*) into systems from system_platform;
+    select count(*) into systems from system_inventory;
     select count(*) into repos from repo;
     <<systems>>
-    for row in select rh_account_id, id from system_platform
+    for row in select rh_account_id, id from system_inventory
     loop
       -- assign random 0-2*repo_per_system repos per system
       rnd := random() * 2 * repo_per_system;
@@ -266,7 +273,7 @@ do $$
           values
               (row.rh_account_id, row.id, trunc(repos*rnd2)+1)
           on conflict do nothing;
-          if mod(cnt, (wanted*progress/100)::int) = 0 then
+          if mod(cnt, greatest(1, ceil((wanted::numeric * progress) / 100.0)::int)) = 0 then
               raise notice 'created % system_repos', cnt;
           end if;
           cnt := cnt + 1;
@@ -293,7 +300,7 @@ do $$
                values (id, 'package' || id )
                on conflict do nothing;
         cnt := cnt + 1;
-        if mod(cnt, (wanted*progress/100)::int) = 0 then
+        if mod(cnt, greatest(1, ceil((wanted::numeric * progress) / 100.0)::int)) = 0 then
             raise notice 'created % package names', cnt;
         end if;
     end loop;
@@ -325,7 +332,7 @@ do $$
                values (id, name_id, id || '.' || id || '-1.el8.x86_64', '0', '0', advisory_id)
                on conflict do nothing;
         cnt := cnt + 1;
-        if mod(cnt, (wanted*progress/100)::int) = 0 then
+        if mod(cnt, greatest(1, ceil((wanted::numeric * progress) / 100.0)::int)) = 0 then
             raise notice 'created % packages', cnt;
         end if;
     end loop;
@@ -365,13 +372,13 @@ do $$
       insert into system_package2 (rh_account_id, system_id, name_id, package_id, installable_id,  applicable_id)
         (select row.id, sp.id, p.name_id, p.id, p.id, p.id
            from (select id, name_id from package limit rnd1::int offset rnd2::int) p,
-                (select id from system_platform where rh_account_id = row.id) sp
+                (select id from system_inventory where rh_account_id = row.id) sp
         )
         on conflict do nothing;
       cnt := cnt + 1;
       if cnt > nextpct then
           raise notice 'created system_packages for % accounts', cnt;
-          nextpct := nextpct + (wanted*progress/100)::int;
+          nextpct := nextpct + greatest(1, ceil((wanted::numeric * progress) / 100.0)::int);
       end if;
           exit when cnt > wanted;
     end loop;
@@ -379,7 +386,7 @@ do $$
 $$
 ;
 
--- show size of whole system_platform table
+-- show partition sizes for large system tables
 SELECT
     parent.relname      AS parent,
     child.relname       AS child,
@@ -388,4 +395,4 @@ SELECT
 FROM pg_inherits
     JOIN pg_class parent            ON pg_inherits.inhparent = parent.oid
     JOIN pg_class child             ON pg_inherits.inhrelid   = child.oid
-WHERE parent.relname in ('system_platform', 'system_package2');
+WHERE parent.relname in ('system_inventory', 'system_patch', 'system_package2');
