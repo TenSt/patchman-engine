@@ -475,19 +475,35 @@ func TestStoreOrUpdateSysPlatform(t *testing.T) {
 
 	colsToUpdate := []string{"vmaas_json", "json_checksum", "reporter_id", "satellite_managed"}
 	vmaasJSON := "this_is_json"
+	// insert new row
+	hostEvent := createTestUploadEvent("1", id, "puptoo", false, true, "created")
+	hostWorkspaces := inventory.Groups(hostEvent.Host.Groups)
 	inStore := &models.SystemPlatformV2{
 		Inventory: models.SystemInventory{
-			InventoryID:      "99990000-0000-0000-0000-000000000001",
-			RhAccountID:      1,
-			VmaasJSON:        &vmaasJSON,
-			DisplayName:      "display_name",
-			SatelliteManaged: false,
+			InventoryID:                      "99990000-0000-0000-0000-000000000001",
+			RhAccountID:                      1,
+			VmaasJSON:                        &vmaasJSON,
+			DisplayName:                      "display_name",
+			SatelliteManaged:                 false,
+			Created:                          hostEvent.Host.Created,
+			Tags:                             utils.MarshalNilToJSONB(hostEvent.Host.Tags),
+			Workspaces:                       &hostWorkspaces,
+			OSName:                           utils.EmptyToNil(&hostEvent.Host.SystemProfile.OperatingSystem.Name),
+			OSMajor:                          &hostEvent.Host.SystemProfile.OperatingSystem.Major,
+			OSMinor:                          &hostEvent.Host.SystemProfile.OperatingSystem.Minor,
+			RhsmVersion:                      utils.EmptyToNil(&hostEvent.Host.SystemProfile.Rhsm.Version),
+			SubscriptionManagerID:            hostEvent.Host.SystemProfile.OwnerID,
+			SapWorkload:                      hostEvent.Host.SystemProfile.Workloads.Sap.SapSystem,
+			SapWorkloadSIDs:                  pq.StringArray(hostEvent.Host.SystemProfile.Workloads.Sap.Sids),
+			AnsibleWorkload:                  hostEvent.Host.SystemProfile.Workloads.Ansible.ControllerVersion != "",
+			AnsibleWorkloadControllerVersion: utils.EmptyToNil(&hostEvent.Host.SystemProfile.Workloads.Ansible.ControllerVersion), // nolint:lll
+			MssqlWorkload:                    hostEvent.Host.SystemProfile.Workloads.Mssql.Version != "",
+			MssqlWorkloadVersion:             utils.EmptyToNil(&hostEvent.Host.SystemProfile.Workloads.Mssql.Version),
 		},
 		Patch: models.SystemPatch{RhAccountID: 1},
 	}
-	// insert new row
-	hostEvent := createTestUploadEvent("1", id, "puptoo", false, true, "created")
-	err := storeOrUpdateSysPlatform(database.DB, inStore, &hostEvent.Host, colsToUpdate)
+
+	err := storeOrUpdateSysPlatform(database.DB, inStore, colsToUpdate)
 	assert.Nil(t, err)
 
 	var outStore models.SystemInventory
@@ -543,14 +559,28 @@ func TestStoreOrUpdateSysPlatform(t *testing.T) {
 		First(&patchAfterInsert).Error)
 	inUpdate := &models.SystemPlatformV2{
 		Inventory: models.SystemInventory{
-			ID:               outStore.ID,
-			InventoryID:      outStore.InventoryID,
-			RhAccountID:      outStore.RhAccountID,
-			VmaasJSON:        &updateJSON,
-			JSONChecksum:     &updateJSON,
-			ReporterID:       &reporter,
-			DisplayName:      "should_not_be_updated",
-			SatelliteManaged: true,
+			ID:                               outStore.ID,
+			InventoryID:                      outStore.InventoryID,
+			RhAccountID:                      outStore.RhAccountID,
+			VmaasJSON:                        &updateJSON,
+			JSONChecksum:                     &updateJSON,
+			ReporterID:                       &reporter,
+			DisplayName:                      "should_not_be_updated",
+			SatelliteManaged:                 true,
+			Created:                          hostEvent.Host.Created,
+			Tags:                             utils.MarshalNilToJSONB(hostEvent.Host.Tags),
+			Workspaces:                       &hostWorkspaces,
+			OSName:                           utils.EmptyToNil(&hostEvent.Host.SystemProfile.OperatingSystem.Name),
+			OSMajor:                          &hostEvent.Host.SystemProfile.OperatingSystem.Major,
+			OSMinor:                          &hostEvent.Host.SystemProfile.OperatingSystem.Minor,
+			RhsmVersion:                      utils.EmptyToNil(&hostEvent.Host.SystemProfile.Rhsm.Version),
+			SubscriptionManagerID:            hostEvent.Host.SystemProfile.OwnerID,
+			SapWorkload:                      hostEvent.Host.SystemProfile.Workloads.Sap.SapSystem,
+			SapWorkloadSIDs:                  pq.StringArray(hostEvent.Host.SystemProfile.Workloads.Sap.Sids),
+			AnsibleWorkload:                  hostEvent.Host.SystemProfile.Workloads.Ansible.ControllerVersion != "",
+			AnsibleWorkloadControllerVersion: utils.EmptyToNil(&hostEvent.Host.SystemProfile.Workloads.Ansible.ControllerVersion), // nolint:lll
+			MssqlWorkload:                    hostEvent.Host.SystemProfile.Workloads.Mssql.Version != "",
+			MssqlWorkloadVersion:             utils.EmptyToNil(&hostEvent.Host.SystemProfile.Workloads.Mssql.Version),
 		},
 		Patch: models.SystemPatch{
 			RhAccountID: outStore.RhAccountID,
@@ -559,16 +589,19 @@ func TestStoreOrUpdateSysPlatform(t *testing.T) {
 	}
 
 	// update row
-	err = storeOrUpdateSysPlatform(database.DB, inUpdate, &hostEvent.Host, colsToUpdate)
-	assert.Nil(t, err)
+	err = storeOrUpdateSysPlatform(database.DB, inUpdate, colsToUpdate)
+	require.NoError(t, err)
 
 	var outUpdate models.SystemInventory
 	assert.NoError(t, database.DB.Where("id = ? AND rh_account_id = ?", inUpdate.Inventory.ID, inUpdate.Inventory.RhAccountID). // nolint:lll
 																	First(&outUpdate).Error)
 	assert.Equal(t, inUpdate.Inventory.InventoryID, outUpdate.InventoryID)
 	assert.Equal(t, inUpdate.Inventory.RhAccountID, outUpdate.RhAccountID)
+	require.NotNil(t, outUpdate.VmaasJSON)
 	assert.Equal(t, *inUpdate.Inventory.VmaasJSON, *outUpdate.VmaasJSON)
+	require.NotNil(t, outUpdate.JSONChecksum)
 	assert.Equal(t, *inUpdate.Inventory.JSONChecksum, *outUpdate.JSONChecksum)
+	require.NotNil(t, outUpdate.ReporterID)
 	assert.Equal(t, *inUpdate.Inventory.ReporterID, *outUpdate.ReporterID)
 	assert.Equal(t, inUpdate.Inventory.SatelliteManaged, outUpdate.SatelliteManaged)
 	// it should update the row
