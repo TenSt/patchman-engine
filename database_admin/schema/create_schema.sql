@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations
 
 
 INSERT INTO schema_migrations
-VALUES (151, false);
+VALUES (152, false);
 
 -- ---------------------------------------------------------------------------
 -- Functions
@@ -603,8 +603,7 @@ SELECT create_table_partitions('system_inventory', 16,
 
 GRANT SELECT, INSERT, UPDATE ON system_inventory TO listener;
 GRANT SELECT, UPDATE, DELETE ON system_inventory TO vmaas_sync; -- vmaas_sync performs system culling
-GRANT SELECT, UPDATE (stale) ON system_inventory TO manager; -- manager needs to be able to update opt_out column
-GRANT SELECT, UPDATE ON system_inventory TO manager; -- manager needs to be able to update opt_out column
+GRANT SELECT, UPDATE (stale) ON system_inventory TO manager;
 GRANT SELECT, UPDATE ON system_inventory TO evaluator;
 
 SELECT create_table_partition_triggers('system_inventory_set_last_updated',
@@ -970,7 +969,6 @@ GRANT SELECT, UPDATE (installable_advisory_count_cache,
               applicable_advisory_bug_count_cache,
               applicable_advisory_sec_count_cache,
               template_id) ON system_patch TO manager;
-GRANT SELECT, UPDATE ON system_patch TO manager;
 GRANT SELECT, UPDATE, DELETE ON system_patch to vmaas_sync; -- vmaas_sync performs system culling
 
 -- ----------------------------------------------------------------------------
