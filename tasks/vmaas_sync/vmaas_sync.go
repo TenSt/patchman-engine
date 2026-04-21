@@ -113,7 +113,11 @@ func SyncData(lastModifiedTS *types.Rfc3339TimestampWithZ, vmaasExportedTS *type
 	}
 
 	// refresh caches
-	caches.RefreshAdvisoryCaches()
+	if tasks.EnableAdvisoryCacheRefresh {
+		caches.RefreshAdvisoryCaches()
+	} else {
+		utils.LogInfo("Advisory cache refresh is disabled")
+	}
 
 	utils.LogInfo("Data sync finished successfully")
 	return nil
