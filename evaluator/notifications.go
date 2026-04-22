@@ -74,8 +74,7 @@ func publishNewAdvisoriesNotification(tx *gorm.DB, system *models.SystemPlatform
 		return nil
 	}
 
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("advisory-notification-publish"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("advisory-notification-publish"))
 
 	advisories, err := getUnnotifiedAdvisories(tx, system.Inventory.RhAccountID, newAdvisories)
 	if err != nil {

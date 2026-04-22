@@ -41,8 +41,7 @@ func lazySaveAndLoadAdvisories(system *models.SystemPlatformV2, vmaasData *vmaas
 		return nil, nil
 	}
 
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("advisories-lazy-save-and-load"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("advisories-lazy-save-and-load"))
 
 	err := lazySaveAdvisories(vmaasData, system.GetInventoryID())
 	if err != nil {

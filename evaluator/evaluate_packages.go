@@ -22,8 +22,7 @@ func lazySaveAndLoadPackages(system *models.SystemPlatformV2, vmaasData *vmaas.U
 		return nil, 0, 0, 0, nil
 	}
 
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("packages-lazy-save-and-load"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("packages-lazy-save-and-load"))
 
 	err := lazySavePackages(vmaasData)
 	if err != nil {

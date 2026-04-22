@@ -35,8 +35,7 @@ func (b *eventBuffer) bufferEvalEvents(
 	rhAccountID int,
 	ptEvent *mqueue.PayloadTrackerEvent,
 ) {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, messagePartDuration.WithLabelValues("buffer-eval-events"))
+	defer utils.ObserveSecondsSince(time.Now(), messagePartDuration.WithLabelValues("buffer-eval-events"))
 
 	b.lock.Lock()
 	evalData := mqueue.EvalData{

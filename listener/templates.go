@@ -55,8 +55,7 @@ func TemplatesMessageHandler(m mqueue.KafkaMessage) error {
 }
 
 func TemplateDelete(template mqueue.TemplateResponse) error {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, templateMsgHandlingDuration.WithLabelValues(TemplateEventDelete))
+	defer utils.ObserveSecondsSince(time.Now(), templateMsgHandlingDuration.WithLabelValues(TemplateEventDelete))
 
 	// check account
 	accountID, err := middlewares.GetOrCreateAccount(template.OrgID)

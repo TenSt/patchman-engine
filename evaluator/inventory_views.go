@@ -29,8 +29,7 @@ func publishInventoryViewsEvent(tx *gorm.DB, systems []models.SystemPlatformV2, 
 		return nil
 	}
 
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("inventory-views-publish"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("inventory-views-publish"))
 
 	orgID := origin.GetOrgID()
 	var requestID string
