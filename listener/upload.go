@@ -255,8 +255,7 @@ func checkPackagesEpoch(packages []string) error {
 }
 
 func sendPayloadStatus(w mqueue.Writer, event mqueue.PayloadTrackerEvent, status string, statusMsg string) {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, messagePartDuration.WithLabelValues("payload-tracker-status"))
+	defer utils.ObserveSecondsSince(time.Now(), messagePartDuration.WithLabelValues("payload-tracker-status"))
 	if status != "" {
 		event.Status = status
 	}
@@ -311,8 +310,7 @@ func hostTemplate(tx *gorm.DB, accountID int, host *Host) *int64 {
 // Stores or updates base system profile, returning inventory + patch aggregate.
 func updateSystemPlatform(tx *gorm.DB, accountID int, host *Host,
 	yumUpdates *YumUpdates, updatesReq *vmaas.UpdatesV3Request) (*models.SystemPlatformV2, error) {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, messagePartDuration.WithLabelValues("update-system-platform"))
+	defer utils.ObserveSecondsSince(time.Now(), messagePartDuration.WithLabelValues("update-system-platform"))
 	// NOTE: if we add a map to vmaas.UpdatesV3Request in the future, we need to use
 	//  	 `encoder.Encode(updatesReq, encoder.SortMapKeys)` to compute the hash correctly
 	updatesReqJSON, err := sonic.Marshal(updatesReq)
@@ -547,8 +545,7 @@ func fixEpelRepos(sys *inventory.SystemProfile, repos []string) []string {
 
 func updateRepos(tx *gorm.DB, profile inventory.SystemProfile, rhAccountID int,
 	systemID int64, repos []string) (addedRepos int64, addedSysRepos int64, deletedSysRepos int64, err error) {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, messagePartDuration.WithLabelValues("update-repos"))
+	defer utils.ObserveSecondsSince(time.Now(), messagePartDuration.WithLabelValues("update-repos"))
 	repos = fixEpelRepos(&profile, repos)
 	repoIDs, addedRepos, err := ensureReposInDB(tx, repos)
 	if err != nil {
@@ -743,8 +740,7 @@ func processModules(systemProfile *inventory.SystemProfile) *[]vmaas.UpdatesV3Re
 
 // We have received new upload, update stored host data, and re-evaluate the host against VMaaS
 func processUpload(host *Host, yumUpdates *YumUpdates) (*models.SystemPlatformV2, error) {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, messagePartDuration.WithLabelValues("upload-processing"))
+	defer utils.ObserveSecondsSince(time.Now(), messagePartDuration.WithLabelValues("upload-processing"))
 	// Ensure we have account stored
 	accountID, err := middlewares.GetOrCreateAccount(host.GetOrgID())
 	if err != nil {

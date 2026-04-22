@@ -63,8 +63,7 @@ func EventsMessageHandler(m mqueue.KafkaMessage) error {
 }
 
 func HandleDelete(event mqueue.PlatformEvent) error {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, messageHandlingDuration.WithLabelValues(EventDelete))
+	defer utils.ObserveSecondsSince(time.Now(), messageHandlingDuration.WithLabelValues(EventDelete))
 	// TODO: Do we need locking here ?
 	err := database.OnConflictUpdate(database.DB, "inventory_id", "when_deleted").
 		Create(models.DeletedSystem{

@@ -135,8 +135,7 @@ func confugureEvaluator() {
 }
 
 func Evaluate(ctx context.Context, event *mqueue.PlatformEvent, inventoryID, evaluationType string) error {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationDuration.WithLabelValues(evaluationType))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationDuration.WithLabelValues(evaluationType))
 
 	utils.LogInfo("inventoryID", inventoryID, "Evaluating system")
 	if enableBypass {
@@ -282,8 +281,7 @@ func tryGetYumUpdates(system *models.SystemPlatformV2) (*vmaas.UpdatesV3Response
 
 func evaluateWithVmaas(updatesData *vmaas.UpdatesV3Response,
 	system *models.SystemPlatformV2, event *mqueue.PlatformEvent) (*vmaas.UpdatesV3Response, error) {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("evaluate-with-vmaas-full"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("evaluate-with-vmaas-full"))
 
 	err := evaluateAndStore(system, updatesData, event)
 	if err != nil {
@@ -293,8 +291,7 @@ func evaluateWithVmaas(updatesData *vmaas.UpdatesV3Response,
 }
 
 func getUpdatesData(ctx context.Context, system *models.SystemPlatformV2) (*vmaas.UpdatesV3Response, error) {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("get-updates-data"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("get-updates-data"))
 
 	var yumUpdates *vmaas.UpdatesV3Response
 	var yumErr error
@@ -335,8 +332,7 @@ func getUpdatesData(ctx context.Context, system *models.SystemPlatformV2) (*vmaa
 }
 
 func getVmaasUpdates(ctx context.Context, system *models.SystemPlatformV2) (*vmaas.UpdatesV3Response, error) {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("vmaas-updates-prepare"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("vmaas-updates-prepare"))
 
 	var vmaasDataCopy vmaas.UpdatesV3Response
 	// first check if we have data in cache
@@ -448,8 +444,7 @@ func tryGetSystem(accountID int, inventoryID string,
 }
 
 func commitWithObserve(tx *gorm.DB) error {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("commit-to-db"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("commit-to-db"))
 
 	err := tx.Commit().Error
 	if err != nil {
@@ -528,8 +523,7 @@ func analyzeRepos(system *models.SystemPlatformV2) (thirdParty bool, err error) 
 		return false, nil
 	}
 
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("repo-analysis"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("repo-analysis"))
 
 	// if system has associated at least one third party repo
 	// it's marked as third party system
@@ -563,8 +557,7 @@ func incrementAdvisoryTypeCounts(advisory models.AdvisoryMetadata, enhCount, bug
 // nolint: funlen
 func updateSystemPlatform(tx *gorm.DB, system *models.SystemPlatformV2,
 	advisories SystemAdvisoryMap, installed, installable, applicable int) error {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("system-update"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("system-update"))
 	if system.Inventory.LastUpload != nil {
 		defer utils.ObserveSecondsSince(*system.Inventory.LastUpload, uploadEvaluationDelay)
 	}
@@ -652,8 +645,7 @@ func updateSystemPlatform(tx *gorm.DB, system *models.SystemPlatformV2,
 }
 
 func callVMaas(ctx context.Context, request *vmaas.UpdatesV3Request) (*vmaas.UpdatesV3Response, error) {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("vmaas-updates-call"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("vmaas-updates-call"))
 
 	vmaasCallFunc := func() (interface{}, *http.Response, error) {
 		utils.LogTrace("request", *request, "vmaas /updates request")
@@ -677,8 +669,7 @@ func callVMaas(ctx context.Context, request *vmaas.UpdatesV3Request) (*vmaas.Upd
 }
 
 func loadSystemData(accountID int, inventoryID string) (*models.SystemPlatformV2, error) {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("data-loading"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("data-loading"))
 
 	var system models.SystemPlatformV2
 	err := database.DB.Table("system_inventory si").
@@ -704,8 +695,7 @@ func validSystem(accountID int, systemID int64) bool {
 }
 
 func parseVmaasJSON(inv *models.SystemInventory) (vmaas.UpdatesV3Request, error) {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("parse-vmaas-json"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("parse-vmaas-json"))
 	return utils.ParseVmaasJSON(inv)
 }
 

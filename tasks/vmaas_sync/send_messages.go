@@ -26,8 +26,7 @@ func SendReevaluationMessages() error {
 		return err
 	}
 
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, messageSendDuration)
+	defer utils.ObserveSecondsSince(time.Now(), messageSendDuration)
 	err = mqueue.SendMessages(base.Context, evalWriter, &inventoryAIDs)
 	if err != nil {
 		utils.LogError("err", err.Error(), "sending to re-evaluate failed")

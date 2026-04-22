@@ -71,8 +71,7 @@ func getReportedPackageUpdates(vmaasData *vmaas.UpdatesV3Response) map[string]bo
 }
 
 func publishRemediationsState(system *models.SystemPlatformV2, response *vmaas.UpdatesV3Response) error {
-	tStart := time.Now()
-	defer utils.ObserveSecondsSince(tStart, evaluationPartDuration.WithLabelValues("remediations-publish"))
+	defer utils.ObserveSecondsSince(time.Now(), evaluationPartDuration.WithLabelValues("remediations-publish"))
 
 	if remediationsPublisher == nil {
 		return nil
